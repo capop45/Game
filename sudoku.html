@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sudoku Moderno</title>
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --board-bg: #ffffff;
+            --text-main: #212529;
+            --text-fixed: #004085;
+            --text-user: #495057;
+            --error-color: #dc3545;
+            --error-bg: #f8d7da;
+            --border-light: #dee2e6;
+            --border-dark: #343a40;
+            --primary: #0d6efd;
+            --primary-hover: #0b5ed7;
+            --font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+
+        header {
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 1.8rem;
+            color: var(--text-main);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            background: var(--board-bg);
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        select, button {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-light);
+            font-size: 1rem;
+            font-family: inherit;
+            cursor: pointer;
+            outline: none;
+        }
+
+        select {
+            background-color: var(--board-bg);
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            transition: background 0.2s;
+            font-weight: 600;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        .status {
+            display: flex;
+            gap: 1.5rem;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            gap: 0;
+            width: 100%;
+            max-width: 500px;
+            background: var(--border-dark);
+            border: 3px solid var(--border-dark);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .cell {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            border: 1px solid var(--border-light);
+            text-align: center;
+            font-size: clamp(1.2rem, 5vw, 2rem);
+            font-weight: 500;
+            color: var(--text-user);
+            background: var(--board-bg);
+            outline: none;
+            transition: background 0.2s;
+            padding: 0;
+        }
+
+        /* Oculta as setas de incremento do input type number */
+        .cell::-webkit-outer-spin-button,
+        .cell::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .cell[type=number] {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+
+        .cell:focus {
+            background-color: #e9ecef;
+        }
+
+        .cell.fixed {
+            color: var(--text-fixed);
+            font-weight: 700;
+            background-color: #f1f3f5;
+        }
+
+        .cell.error {
+            color: var(--error-color);
+            background-color: var(--error-bg);
+            font-weight: 700;
+        }
+
+        /* Estilização para separar os quadrantes 3x3 */
+        .border-right {
+            border-right: 3px solid var(--border-dark);
+        }
+        
+        .border-bottom {
+            border-bottom: 3px solid var(--border-dark);
+        }
+
+        /* Responsividade */
+        @media (max-width: 400px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .status {
+                justify-content: space-between;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Sudoku</h1>
+        <div class="controls">
+            <select id="difficulty">
+                <option value="easy">Fácil</option>
+                <option value="medium" selected>Médio</option>
+                <option value="hard">Difícil</option>
+            </select>
+            <div class="status">
+                <div>⏱ <span id="time">00:00</span></div>
+                <div>⭐ <span id="score">0</span></div>
+            </div>
+            <button id="new-game">Novo Jogo</button>
+        </div>
+    </header>
+
+    <main id="board"></main>
+
+    <script>
+        /**
+         * LÓGICA DO SUDOKU E ALGORITMOS
+         * Isola a geração, solução e validação do tabuleiro
+         */
+        class SudokuEngine {
+            constructor() {
+                this.size = 9;
+                this.boxSize = 3;
+            }
+
+            // Inicializa um tabuleiro vazio 9x9
+            createEmptyGrid() {
+                return Array.from({ length: this.size }, () => Array(this.size).fill(0));
+            }
+
+            // Valida se a inserção de um número segue as regras clássicas (Linha, Coluna, Quadrante 3x3)
+            isValid(grid, row, col, num) {
+                // Checa linha e coluna
+                for (let i = 0; i < this.size; i++) {
+                    if (grid[row][i] === num || grid[i][col] === num) {
+                        return false;
+                    }
+                }
+
+                // Checa o quadrante 3x3
+                const startRow = row - (row % this.boxSize);
+                const startCol = col - (col % this.boxSize);
+                for (let i = 0; i < this.boxSize; i++) {
+                    for (let j = 0; j < this.boxSize; j++) {
+                        if (grid[startRow + i][startCol + j] === num) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            // Preenche os quadrantes diagonais que são independentes (otimização inicial)
+            fillDiagonalBoxes(grid) {
+                for (let i = 0; i < this.size; i += this.boxSize) {
+                    this.fillBox(grid, i, i);
+                }
+            }
+
+            // Preenche um quadrante 3x3 específico com números aleatórios válidos
+            fillBox(grid, rowStart, colStart) {
+                let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+                nums = this.shuffleArray(nums);
+                let index = 0;
+                for (let i = 0; i < this.boxSize; i++) {
+                    for (let j = 0; j < this.boxSize; j++) {
+                        grid[rowStart + i][colStart + j] = nums[index++];
+                    }
+                }
+            }
+
+            shuffleArray(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            }
+
+            // Algoritmo de Backtracking para resolver/gerar o tabuleiro completo
+            solveSudoku(grid) {
+                for (let row = 0; row < this.size; row++) {
+                    for (let col = 0; col < this.size; col++) {
+                        if (grid[row][col] === 0) {
+                            for (let num = 1; num <= this.size; num++) {
+                                if (this.isValid(grid, row, col, num)) {
+                                    grid[row][col] = num;
+                                    // Chamada recursiva; se retornar true, encontrou solução
+                                    if (this.solveSudoku(grid)) {
+                                        return true;
+                                    }
+                                    // Se falhou mais a frente, desfaz (backtrack)
+                                    grid[row][col] = 0;
+                                }
+                            }
+                            return false; // Retorna falso se nenhum número servir na célula vazia
+                        }
+                    }
+                }
+                return true; // Tabuleiro preenchido
+            }
+
+            // Gera um novo jogo baseado na dificuldade selecionada
+            generateGame(difficulty) {
+                const fullGrid = this.createEmptyGrid();
+                this.fillDiagonalBoxes(fullGrid);
+                this.solveSudoku(fullGrid); // Gera a solução base
+
+                // Clona a solução para criar a versão jogável
+                const puzzle = fullGrid.map(row => [...row]);
+                
+                // Define a quantidade de lacunas baseada na dificuldade
+                let holes;
+                switch(difficulty) {
+                    case 'easy': holes = 35; break; // 46 preenchidos
+                    case 'medium': holes = 45; break; // 36 preenchidos
+                    case 'hard': holes = 55; break; // 26 preenchidos
+                    default: holes = 45;
+                }
+
+                // Remove números aleatoriamente para criar o puzzle
+                let count = holes;
+                while (count > 0) {
+                    let cellId = Math.floor(Math.random() * 81);
+                    let row = Math.floor(cellId / this.size);
+                    let col = cellId % this.size;
+                    
+                    if (puzzle[row][col] !== 0) {
+                        puzzle[row][col] = 0;
+                        count--;
+                    }
+                }
+
+                return {
+                    solution: fullGrid,
+                    puzzle: puzzle
+                };
+            }
+        }
+
+        /**
+         * MANIPULAÇÃO DO DOM E CONTROLE DO JOGO
+         */
+        class SudokuGame {
+            constructor() {
+                this.engine = new SudokuEngine();
+                this.boardElement = document.getElementById('board');
+                this.timeElement = document.getElementById('time');
+                this.scoreElement = document.getElementById('score');
+                this.diffSelect = document.getElementById('difficulty');
+                this.newGameBtn = document.getElementById('new-game');
+                
+                this.inputs = [];
+                this.timer = null;
+                this.seconds = 0;
+                this.score = 0;
+                this.currentPuzzle = [];
+                this.solution = [];
+
+                this.bindEvents();
+                this.initGame();
+            }
+
+            bindEvents() {
+                this.newGameBtn.addEventListener('click', () => this.initGame());
+                this.diffSelect.addEventListener('change', () => this.initGame());
+            }
+
+            initGame() {
+                // Reset de estado
+                this.seconds = 0;
+                this.score = 0;
+                this.updateScoreUI();
+                this.updateTimeUI();
+                
+                if (this.timer) clearInterval(this.timer);
+                this.timer = setInterval(() => {
+                    this.seconds++;
+                    this.updateTimeUI();
+                }, 1000);
+
+                // Geração lógica
+                const gameData = this.engine.generateGame(this.diffSelect.value);
+                this.currentPuzzle = gameData.puzzle;
+                this.solution = gameData.solution;
+
+                this.renderBoard();
+            }
+
+            renderBoard() {
+                this.boardElement.innerHTML = '';
+                this.inputs = [];
+
+                for (let r = 0; r < 9; r++) {
+                    const rowInputs = [];
+                    for (let c = 0; c < 9; c++) {
+                        const input = document.createElement('input');
+                        input.type = 'number';
+                        input.min = 1;
+                        input.max = 9;
+                        input.className = 'cell';
+                        input.dataset.row = r;
+                        input.dataset.col = c;
+
+                        // Aplica bordas espessas para definir as subgrades 3x3 visualmente
+                        if (c % 3 === 2 && c !== 8) input.classList.add('border-right');
+                        if (r % 3 === 2 && r !== 8) input.classList.add('border-bottom');
+
+                        const val = this.currentPuzzle[r][c];
+                        if (val !== 0) {
+                            input.value = val;
+                            input.readOnly = true;
+                            input.classList.add('fixed');
+                        } else {
+                            input.addEventListener('input', (e) => this.handleInput(e));
+                        }
+
+                        this.boardElement.appendChild(input);
+                        rowInputs.push(input);
+                    }
+                    this.inputs.push(rowInputs);
+                }
+            }
+
+            handleInput(e) {
+                const input = e.target;
+                const r = parseInt(input.dataset.row);
+                const c = parseInt(input.dataset.col);
+                let val = parseInt(input.value);
+
+                // Limpa estado de erro prévio
+                input.classList.remove('error');
+
+                // Validação de tipo de entrada (apenas 1 a 9)
+                if (isNaN(val) || val < 1 || val > 9) {
+                    input.value = '';
+                    return;
+                }
+
+                // Limita para aceitar apenas 1 dígito no campo
+                input.value = val.toString().slice(-1);
+
+                // Constrói o estado atual da grade a partir da UI para validação clássica
+                const currentGrid = this.getCurrentGridState();
+                
+                // Remove o valor atual temporariamente para testar se ele mesmo não entra em conflito com o resto
+                currentGrid[r][c] = 0;
+
+                // Valida regra clássica (sem olhar o gabarito final, apenas confere conflitos)
+                if (!this.engine.isValid(currentGrid, r, c, val)) {
+                    input.classList.add('error');
+                    this.addScore(-10); // Penalidade
+                } else {
+                    this.addScore(15); // Recompensa por movimento válido
+                }
+
+                this.checkWinCondition();
+            }
+
+            getCurrentGridState() {
+                const grid = this.engine.createEmptyGrid();
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        const val = parseInt(this.inputs[r][c].value);
+                        grid[r][c] = isNaN(val) ? 0 : val;
+                    }
+                }
+                return grid;
+            }
+
+            addScore(points) {
+                this.score += points;
+                if (this.score < 0) this.score = 0; // Impede pontuação negativa
+                this.updateScoreUI();
+            }
+
+            updateScoreUI() {
+                this.scoreElement.innerText = this.score;
+            }
+
+            updateTimeUI() {
+                const m = Math.floor(this.seconds / 60).toString().padStart(2, '0');
+                const s = (this.seconds % 60).toString().padStart(2, '0');
+                this.timeElement.innerText = `${m}:${s}`;
+            }
+
+            checkWinCondition() {
+                let isComplete = true;
+                let hasErrors = false;
+
+                for (let r = 0; r < 9; r++) {
+                    for (let c = 0; c < 9; c++) {
+                        const input = this.inputs[r][c];
+                        if (!input.value) {
+                            isComplete = false;
+                        }
+                        if (input.classList.contains('error')) {
+                            hasErrors = true;
+                        }
+                    }
+                }
+
+                if (isComplete && !hasErrors) {
+                    clearInterval(this.timer);
+                    setTimeout(() => {
+                        alert(`Parabéns! Você concluiu o Sudoku!\nTempo: ${this.timeElement.innerText}\nPontuação final: ${this.score}`);
+                    }, 200);
+                }
+            }
+        }
+
+        // Inicia a aplicação após o carregamento da página
+        window.addEventListener('DOMContentLoaded', () => {
+            new SudokuGame();
+        });
+    </script>
+</body>
+</html>
