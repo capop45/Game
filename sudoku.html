@@ -17,10 +17,10 @@
             --danger: #dc3545;
             --danger-bg: #f8d7da;
             --fixed-color: #004085;
-            --fixed-bg: #e9ecef; /* Fundo dos números já preenchidos (Cinza claro) */
+            --fixed-bg: #e9ecef;
             --cell-bg: #ffffff;
-            --cell-selected: #b6d4fe; /* Célula ativa (Azul mais nítido) */
-            --cell-highlight: #e7f1ff; /* Destaque da linha/coluna/3x3 (Azul bem suave) */
+            --cell-selected: #b6d4fe;
+            --cell-highlight: #e7f1ff;
             --draft-color: #6c757d;
             --modal-bg: rgba(0, 0, 0, 0.5);
             --font-main: 'Segoe UI', system-ui, sans-serif;
@@ -39,10 +39,10 @@
             --danger: #ff6b6b;
             --danger-bg: #5c1a1a;
             --fixed-color: #9ec5fe;
-            --fixed-bg: #2b3035; /* Fundo dos fixos no dark mode (Cinza escuro) */
+            --fixed-bg: #2b3035;
             --cell-bg: #1e1e1e;
-            --cell-selected: #0d47a1; /* Célula ativa no dark mode (Azul forte) */
-            --cell-highlight: #1a293b; /* Destaque no dark mode (Azul escuro suave) */
+            --cell-selected: #0d47a1;
+            --cell-highlight: #1a293b;
             --draft-color: #adb5bd;
             --modal-bg: rgba(0, 0, 0, 0.8);
         }
@@ -216,7 +216,6 @@
             background-color: var(--cell-highlight);
         }
 
-        /* Para garantir que uma célula fixa destacada tenha uma cor ligeiramente mesclada (opcional, mas melhora a UI) */
         .cell.fixed.highlight {
             background-color: color-mix(in srgb, var(--fixed-bg) 60%, var(--cell-highlight) 40%);
         }
@@ -814,23 +813,20 @@
                 } else if (this.isPencilMode) {
                     // Lápis (Draft)
                     cell.val = 0;
-                    cell.el.classList.remove('error');
                     if (cell.drafts.has(num)) cell.drafts.delete(num);
                     else cell.drafts.add(num);
                 } else {
                     // Caneta (Valor real)
                     cell.val = num;
-                    cell.drafts.clear(); // Apaga rascunhos se colocou valor principal
+                    cell.drafts.clear(); 
                     
                     // Valida regra básica para feedback visual e pontuação
                     const currentGrid = this.cells.map(row => row.map(c => c.val));
                     const isValid = this.engine.isMoveValid(currentGrid, r, c, num);
                     
                     if (!isValid) {
-                        cell.el.classList.add('error');
                         this.scoreManager.addPoints(false, this.currentDifficulty);
                     } else {
-                        cell.el.classList.remove('error');
                         this.scoreManager.addPoints(true, this.currentDifficulty);
                     }
                 }
@@ -842,6 +838,8 @@
             }
 
             updateBoardUI() {
+                const currentGrid = this.cells.map(row => row.map(c => c.val));
+
                 for (let r = 0; r < 9; r++) {
                     for (let c = 0; c < 9; c++) {
                         const cell = this.cells[r][c];
@@ -849,17 +847,28 @@
 
                         if (cell.val !== 0) {
                             cell.el.textContent = cell.val;
-                        } else if (cell.drafts.size > 0) {
-                            // Renderiza grid 3x3 de rascunhos
-                            const draftGrid = document.createElement('div');
-                            draftGrid.className = 'draft-grid';
-                            for (let i = 1; i <= 9; i++) {
-                                const span = document.createElement('span');
-                                span.className = 'draft-item';
-                                if (cell.drafts.has(i)) span.textContent = i;
-                                draftGrid.appendChild(span);
+                            // Reavalia o estado de erro dinamicamente para todas as células alteráveis
+                            if (!cell.isFixed) {
+                                if (!this.engine.isMoveValid(currentGrid, r, c, cell.val)) {
+                                    cell.el.classList.add('error');
+                                } else {
+                                    cell.el.classList.remove('error');
+                                }
                             }
-                            cell.el.appendChild(draftGrid);
+                        } else {
+                            cell.el.classList.remove('error');
+                            if (cell.drafts.size > 0) {
+                                // Renderiza grid 3x3 de rascunhos
+                                const draftGrid = document.createElement('div');
+                                draftGrid.className = 'draft-grid';
+                                for (let i = 1; i <= 9; i++) {
+                                    const span = document.createElement('span');
+                                    span.className = 'draft-item';
+                                    if (cell.drafts.has(i)) span.textContent = i;
+                                    draftGrid.appendChild(span);
+                                }
+                                cell.el.appendChild(draftGrid);
+                            }
                         }
                     }
                 }
@@ -874,10 +883,10 @@
                         const cell = this.cells[r][c];
                         if (cell.val === 0) complete = false;
                         if (cell.el.classList.contains('error')) hasErrors = true;
-                        if (cell.val !== 0 && cell.val !== this.solution[r][c]) hasErrors = true; // Validação profunda
                     }
                 }
 
+                // O jogo é vencido se todas as células estão preenchidas e não há erros nas regras
                 if (complete && !hasErrors) {
                     this.handleVictory();
                 }
