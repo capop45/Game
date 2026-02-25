@@ -1,468 +1,407 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Engenharia Estática - Arranha-Céu</title>
+    <title>Engenheiro Isométrico 2026</title>
     <style>
         :root {
-            --ui-bg: rgba(20, 25, 30, 0.95);
-            --primary: #3498db;
-            --wood: #8B5A2B;
-            --concrete: #7f8c8d;
-            --steel: #2c3e50;
+            --primary: #2c3e50;
+            --accent: #e67e22;
+            --danger: #e74c3c;
+            --success: #27ae60;
+            --ui-bg: rgba(44, 62, 80, 0.9);
         }
-        
-        * { box-sizing: border-box; user-select: none; }
-        
+
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            background-color: #87CEEB; /* Céu */
-            overflow: hidden;
+            overflow: hidden; background: #34495e;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            touch-action: none; /* Previne scroll no mobile */
+            color: white; user-select: none;
         }
-        
-        canvas { display: block; width: 100%; height: 100%; }
 
+        canvas { display: block; touch-action: none; }
+
+        /* HUD & UI */
         #hud {
-            position: absolute; top: 0; left: 0; width: 100%;
-            padding: 15px; text-align: center; pointer-events: none;
-            text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
-            color: white; font-size: 24px; font-weight: bold;
+            position: absolute; top: 10px; left: 10px; right: 10px;
+            display: flex; justify-content: space-between;
+            pointer-events: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
 
-        #game-over {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.8); color: white; padding: 30px; border-radius: 10px;
-            text-align: center; display: none; z-index: 100;
-        }
+        .stat-box { background: var(--ui-bg); padding: 10px; border-radius: 8px; border-left: 4px solid var(--accent); }
 
-        #game-over button {
-            margin-top: 15px; padding: 10px 20px; font-size: 18px; cursor: pointer;
-            background: var(--primary); color: white; border: none; border-radius: 5px;
-        }
+        #timer { font-weight: bold; font-size: 1.5rem; transition: color 0.3s; }
+        .critical-time { color: var(--danger); animation: blink 0.5s infinite; }
+
+        @keyframes blink { 50% { opacity: 0.3; } }
 
         /* Rodapé de Controles */
         #controls {
-            position: absolute; bottom: 0; left: 0; width: 100%;
-            background: var(--ui-bg); padding: 15px 10px;
-            display: flex; flex-direction: column; gap: 10px;
-            border-top: 2px solid rgba(255,255,255,0.1);
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 10px; background: var(--ui-bg);
+            padding: 15px; border-radius: 50px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
 
-        .control-row { display: flex; justify-content: space-around; gap: 10px; }
-
-        .btn {
-            flex: 1; padding: 15px 5px; font-size: 16px; font-weight: bold;
-            border: 2px solid transparent; border-radius: 8px; cursor: pointer;
-            color: white; text-align: center; transition: 0.2s;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        .btn-tool {
+            background: #7f8c8d; border: none; padding: 12px 20px;
+            color: white; border-radius: 25px; cursor: pointer;
+            transition: 0.2s; font-weight: bold;
         }
 
-        .btn:active { transform: translateY(2px); box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
-        .btn.active { border-color: white; outline: 2px solid var(--primary); }
+        .btn-tool.active { background: var(--accent); transform: scale(1.1); }
 
-        /* Cores dos Materiais */
-        #btn-wood { background-color: var(--wood); }
-        #btn-concrete { background-color: var(--concrete); }
-        #btn-steel { background-color: var(--steel); }
-        
-        /* Orientação */
-        #btn-pilar, #btn-viga { background-color: #444; }
+        /* Overlays */
+        .overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(8px); display: none;
+            flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; text-align: center;
+        }
 
+        .card { background: var(--primary); padding: 30px; border-radius: 15px; width: 90%; max-width: 400px; }
+
+        input[type="text"] {
+            background: #ecf0f1; border: none; padding: 10px;
+            font-size: 1.5rem; width: 80px; text-align: center;
+            text-transform: uppercase; margin: 15px 0; border-radius: 5px;
+        }
+
+        .ranking-table { width: 100%; margin: 20px 0; border-collapse: collapse; }
+        .ranking-table td { padding: 5px; border-bottom: 1px solid #555; }
+
+        button.main-btn {
+            background: var(--success); color: white; border: none;
+            padding: 15px 30px; font-size: 1.2rem; border-radius: 5px;
+            cursor: pointer; width: 100%; margin-top: 10px;
+        }
     </style>
 </head>
 <body>
 
-    <canvas id="gameCanvas"></canvas>
-
-    <div id="hud">Altura: <span id="score">0</span>m</div>
-
-    <div id="game-over">
-        <h2>FALHA ESTRUTURAL</h2>
-        <p>A estrutura colapsou.</p>
-        <p>Altura Máxima: <span id="final-score">0</span>m</p>
-        <button onclick="resetGame()">Reiniciar Projeto</button>
+    <div id="hud">
+        <div class="stat-box">
+            Altura: <span id="txt-alt">0</span> / <span id="target-alt">0</span>m<br>
+            Custo: R$ <span id="txt-budget">0</span>
+        </div>
+        <div class="stat-box" id="timer">60:00</div>
     </div>
 
     <div id="controls">
-        <div class="control-row">
-            <button class="btn active" id="btn-wood" onclick="selectMaterial('wood')">Madeira</button>
-            <button class="btn" id="btn-concrete" onclick="selectMaterial('concrete')">Concreto</button>
-            <button class="btn" id="btn-steel" onclick="selectMaterial('steel')">Aço</button>
-        </div>
-        <div class="control-row">
-            <button class="btn active" id="btn-pilar" onclick="selectOrientation('pilar')">Pilar (V)</button>
-            <button class="btn" id="btn-viga" onclick="selectOrientation('viga')">Viga (H)</button>
+        <button class="btn-tool active" onclick="setTool('pilar')">PILAR (Concrete)</button>
+        <button class="btn-tool" onclick="setTool('viga')">VIGA (Concrete)</button>
+        <button class="btn-tool" onclick="setTool('parede')">PAREDE (Alv.)</button>
+    </div>
+
+    <div id="screen-start" class="overlay" style="display: flex;">
+        <div class="card">
+            <h2>CIVIL MASTER 2.5D</h2>
+            <p>Selecione a Dificuldade:</p>
+            <button class="main-btn" onclick="startGame('easy')" style="background:#27ae60">FÁCIL (Alvo 10m)</button>
+            <button class="main-btn" onclick="startGame('medium')" style="background:#e67e22">MÉDIO (Alvo 20m)</button>
+            <button class="main-btn" onclick="startGame('hard')" style="background:#c0392b">DIFÍCIL (Alvo 40m)</button>
         </div>
     </div>
 
+    <div id="screen-gameover" class="overlay">
+        <div class="card">
+            <h1 id="end-title">FIM DE JOGO</h1>
+            <p id="end-msg"></p>
+            <div id="win-section" style="display:none">
+                <h3>Sua Pontuação: <span id="final-score">0</span></h3>
+                <input type="text" id="player-name" maxlength="3" placeholder="AAA">
+                <button class="main-btn" onclick="saveScore()">Salvar Ranking</button>
+            </div>
+            <div id="ranking-container"></div>
+            <button class="main-btn" onclick="location.reload()" style="background:#7f8c8d">Reiniciar</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
     <script>
+        /**
+         * CONFIGURAÇÕES E ESTADOS
+         */
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        
+        let gameState = 'start';
+        let config = { budget: 0, target: 0, mult: 1 };
+        let timeLeft = 3600; // 60 minutos
+        let blocks = [];
+        let currentTool = 'pilar';
+        let gridSize = 40;
+        let isoAngle = Math.PI / 6;
 
-        // Configuração de Tela e Câmera
-        let width, height, groundY;
-        let cameraY = 0;
-        let targetCameraY = 0;
+        const MATERIALS = {
+            pilar:  { w: 0.4, h: 3, d: 0.4, cost: 500, density: 2400, limit: 25000000, color: '#95a5a6' },
+            viga:   { w: 2, h: 0.4, d: 0.4, cost: 300, density: 2400, limit: 15000000, color: '#7f8c8d' },
+            parede: { w: 2, h: 3, d: 0.2, cost: 200, density: 1600, limit: 5000000, color: '#d35400' }
+        };
 
+        /**
+         * INICIALIZAÇÃO
+         */
         function resize() {
-            width = window.innerWidth;
-            height = window.innerHeight;
-            canvas.width = width;
-            canvas.height = height;
-            groundY = height - document.getElementById('controls').offsetHeight - 50;
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
         }
         window.addEventListener('resize', resize);
-
-        // --- SISTEMA DE MATERIAIS ---
-        // Densidade: afeta o peso gerado.
-        // Resistência: tensão máxima (Força/Área) suportada antes da ruptura.
-        const MATERIALS = {
-            wood:     { id: 'wood', color: '#8B5A2B', density: 0.5, strength: 300 },
-            concrete: { id: 'concrete', color: '#7f8c8d', density: 2.5, strength: 1200 },
-            steel:    { id: 'steel', color: '#2c3e50', density: 7.8, strength: 6000 }
-        };
-
-        const DIMENSIONS = {
-            pilar: { w: 20, h: 100 }, // Vertical
-            viga:  { w: 120, h: 20 }  // Horizontal
-        };
-
-        // Estado do Jogo
-        let blocks = [];
-        let particles = [];
-        let currentMaterial = 'wood';
-        let currentOrientation = 'pilar';
-        let gameState = 'playing'; // playing, gameover
-        let score = 0;
-        let maxScore = 0;
-
-        // Controle de Input/Preview
-        let touchX = -1;
-        let touchY = -1;
-        let isTouching = false;
-
-        // Inicialização
-        function resetGame() {
-            blocks = [];
-            particles = [];
-            cameraY = 0;
-            targetCameraY = 0;
-            score = 0;
-            maxScore = 0;
-            gameState = 'playing';
-            document.getElementById('game-over').style.display = 'none';
-            document.getElementById('score').innerText = '0';
-        }
-
-        // Funções de UI
-        function selectMaterial(mat) {
-            currentMaterial = mat;
-            document.querySelectorAll('.control-row:first-child .btn').forEach(b => b.classList.remove('active'));
-            document.getElementById('btn-' + mat).classList.add('active');
-        }
-
-        function selectOrientation(ori) {
-            currentOrientation = ori;
-            document.querySelectorAll('.control-row:last-child .btn').forEach(b => b.classList.remove('active'));
-            document.getElementById('btn-' + ori).classList.add('active');
-        }
-
-        // Eventos Touch/Mouse
-        function handleStart(e) {
-            if (gameState !== 'playing') return;
-            let clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            let clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            
-            // Ignorar toques na área de controles
-            if (clientY > height - document.getElementById('controls').offsetHeight) return;
-
-            isTouching = true;
-            touchX = clientX;
-            touchY = clientY;
-        }
-
-        function handleMove(e) {
-            if (!isTouching) return;
-            touchX = e.touches ? e.touches[0].clientX : e.clientX;
-            touchY = e.touches ? e.touches[0].clientY : e.clientY;
-        }
-
-        function handleEnd(e) {
-            if (!isTouching || gameState !== 'playing') return;
-            isTouching = false;
-            spawnBlock(touchX);
-        }
-
-        canvas.addEventListener('touchstart', handleStart);
-        canvas.addEventListener('touchmove', handleMove);
-        canvas.addEventListener('touchend', handleEnd);
-        canvas.addEventListener('mousedown', handleStart);
-        canvas.addEventListener('mousemove', handleMove);
-        canvas.addEventListener('mouseup', handleEnd);
-
-        // Criar Novo Bloco
-        function spawnBlock(x) {
-            let dim = DIMENSIONS[currentOrientation];
-            let mat = MATERIALS[currentMaterial];
-            
-            // Alinhar a grade (grid) invisível para facilitar construção
-            let snapX = Math.round((x - dim.w / 2) / 10) * 10;
-            
-            blocks.push({
-                x: snapX,
-                y: -cameraY - dim.h, // Spawna no topo da tela visível
-                w: dim.w,
-                h: dim.h,
-                material: mat,
-                falling: true,
-                supportedLoad: 0,
-                stress: 0,
-                broken: false
-            });
-        }
-
-        // --- CÁLCULOS E MOTOR DE FÍSICA ---
-        function updatePhysics() {
-            let anyFalling = false;
-
-            // Gravidade e Colisão
-            blocks.forEach(b => {
-                if (b.falling && !b.broken) {
-                    anyFalling = true;
-                    b.y += 8; // Velocidade de queda constante para simplificar
-
-                    // Checar colisão com o chão
-                    if (b.y + b.h >= groundY) {
-                        b.y = groundY - b.h;
-                        b.falling = false;
-                    } else {
-                        // Checar colisão com outros blocos
-                        for (let other of blocks) {
-                            if (other !== b && !other.falling && !other.broken) {
-                                // AABB simples com tolerância de queda
-                                if (b.x < other.x + other.w && b.x + b.w > other.x &&
-                                    b.y + b.h >= other.y && b.y + b.h <= other.y + 10) {
-                                    b.y = other.y - b.h; // Senta exatamente em cima
-                                    b.falling = false;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-
-            // Se nada estiver caindo, processar a distribuição de carga
-            if (!anyFalling && gameState === 'playing' && blocks.length > 0) {
-                calculateStaticLoads();
-            }
-
-            // Atualizar Câmera e Placar
-            let highestY = groundY;
-            blocks.forEach(b => { if (!b.falling && b.y < highestY) highestY = b.y; });
-            
-            score = Math.floor((groundY - highestY) / 10);
-            if (score > maxScore) {
-                maxScore = score;
-                document.getElementById('score').innerText = maxScore;
-            }
-
-            // Mover a câmera suavemente se a torre subir acima de 60% da tela
-            let desiredTop = height * 0.4;
-            let currentTopOffset = highestY + cameraY;
-            if (currentTopOffset < desiredTop) {
-                targetCameraY += (desiredTop - currentTopOffset);
-            }
-            cameraY += (targetCameraY - cameraY) * 0.1;
-        }
-
-        /* * LÓGICA DE ENGENHARIA ESTRUTURAL (Propagação de Carga Descendente)
-         * Fórmula adotada para distribuição de peso:
-         * 1. Peso Próprio (P) = Densidade * Largura * Altura.
-         * 2. Carga Total no Bloco (Q) = P + Soma das cargas transferidas pelos blocos acima.
-         * 3. Tensão no Bloco (Sigma) = Q / Largura de Contato Total (Área em 2D).
-         * 4. Distribuição: A Carga Total (Q) de um bloco é transferida aos suportes abaixo
-         * proporcionalmente à área (largura) de contato de cada suporte.
-         */
-        function calculateStaticLoads() {
-            // Resetar estados
-            blocks.forEach(b => {
-                b.supportedLoad = 0;
-                b.stress = 0;
-            });
-
-            // Ordenar de cima para baixo (menor Y para maior Y) para cascata correta
-            let sorted = [...blocks].filter(b => !b.broken).sort((a, b) => a.y - b.y);
-
-            let hasCollapse = false;
-
-            for (let i = 0; i < sorted.length; i++) {
-                let block = sorted[i];
-                
-                // 1. Peso do Bloco
-                let weight = block.material.density * block.w * block.h;
-                // 2. Carga Total = Peso próprio + Carga recebida de cima
-                let totalLoad = weight + block.supportedLoad;
-
-                // 3. Calcular Tensão atual
-                block.stress = totalLoad / block.w;
-
-                // Checar Ruptura: Se tensão > Limite de Escoamento (Strength)
-                if (block.stress > block.material.strength) {
-                    triggerCollapse(block);
-                    hasCollapse = true;
-                    continue; // Bloco quebrou, não transmite mais carga perfeitamente
-                }
-
-                // 4. Propagação de Carga: Encontrar suportes abaixo
-                let supports = [];
-                let totalContactWidth = 0;
-
-                for (let j = i + 1; j < sorted.length; j++) {
-                    let below = sorted[j];
-                    // Tolerância mínima para considerar contato vertical (Y)
-                    if (Math.abs(below.y - (block.y + block.h)) < 2) {
-                        // Calcular intersecção horizontal (X)
-                        let overlapLeft = Math.max(block.x, below.x);
-                        let overlapRight = Math.min(block.x + block.w, below.x + below.w);
-                        let contact = overlapRight - overlapLeft;
-
-                        if (contact > 0) {
-                            supports.push({ target: below, width: contact });
-                            totalContactWidth += contact;
-                        }
-                    }
-                }
-
-                // Distribuir a carga proporcionalmente ao contato
-                if (supports.length > 0) {
-                    supports.forEach(sup => {
-                        let fraction = sup.width / totalContactWidth;
-                        sup.target.supportedLoad += totalLoad * fraction;
-                    });
-                } else if (block.y + block.h < groundY - 2) {
-                    // Está flutuando sem suporte e não está no chão? Volta a cair.
-                    block.falling = true;
-                }
-            }
-
-            if (hasCollapse) {
-                // Game Over - Reação em cadeia
-                gameState = 'gameover';
-                document.getElementById('final-score').innerText = maxScore;
-                document.getElementById('game-over').style.display = 'block';
-                
-                // Desestabiliza blocos não quebrados (Efeito físico de desabamento visual)
-                blocks.forEach(b => {
-                    if (!b.broken) b.falling = true;
-                });
-            }
-        }
-
-        function triggerCollapse(block) {
-            block.broken = true;
-            // Gerar partículas
-            for (let i = 0; i < 15; i++) {
-                particles.push({
-                    x: block.x + Math.random() * block.w,
-                    y: block.y + Math.random() * block.h,
-                    vx: (Math.random() - 0.5) * 10,
-                    vy: (Math.random() - 1) * 10,
-                    size: Math.random() * 5 + 2,
-                    color: block.material.color,
-                    life: 1.0
-                });
-            }
-        }
-
-        // --- RENDERIZAÇÃO ---
-        function draw() {
-            ctx.clearRect(0, 0, width, height);
-
-            // Desenhar Chão
-            ctx.fillStyle = '#27ae60';
-            ctx.fillRect(0, groundY + cameraY, width, height - groundY);
-
-            // Chão profundo (Terra)
-            ctx.fillStyle = '#8e44ad';
-            ctx.fillRect(0, groundY + cameraY + 20, width, height);
-
-            // Preview Ghost
-            if (isTouching && gameState === 'playing') {
-                let dim = DIMENSIONS[currentOrientation];
-                let snapX = Math.round((touchX - dim.w / 2) / 10) * 10;
-                
-                ctx.fillStyle = MATERIALS[currentMaterial].color;
-                ctx.globalAlpha = 0.4;
-                ctx.fillRect(snapX, -dim.h + 20 + cameraY, dim.w, dim.h);
-                
-                // Linha de guia
-                ctx.beginPath();
-                ctx.moveTo(snapX + dim.w/2, cameraY);
-                ctx.lineTo(snapX + dim.w/2, height);
-                ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-                ctx.setLineDash([5, 5]);
-                ctx.stroke();
-                ctx.setLineDash([]);
-                ctx.globalAlpha = 1.0;
-            }
-
-            // Desenhar Blocos
-            blocks.forEach(b => {
-                if (b.broken) return;
-
-                // Cor base do material
-                ctx.fillStyle = b.material.color;
-                ctx.fillRect(b.x, b.y + cameraY, b.w, b.h);
-
-                // Contorno
-                ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-                ctx.lineWidth = 1;
-                ctx.strokeRect(b.x, b.y + cameraY, b.w, b.h);
-
-                // Feedback Visual de Tensão (Stress/Strain)
-                if (!b.falling && b.stress > 0) {
-                    let stressRatio = Math.min(b.stress / b.material.strength, 1);
-                    // Gradiente para vermelho indica aproximação do limite de escoamento
-                    if (stressRatio > 0.1) {
-                        ctx.fillStyle = `rgba(255, 0, 0, ${stressRatio * 0.8})`;
-                        ctx.fillRect(b.x, b.y + cameraY, b.w, b.h);
-                    }
-                }
-            });
-
-            // Partículas
-            for (let i = particles.length - 1; i >= 0; i--) {
-                let p = particles[i];
-                p.x += p.vx;
-                p.y += p.vy;
-                p.vy += 0.5; // Gravidade
-                p.life -= 0.02;
-
-                if (p.life <= 0) {
-                    particles.splice(i, 1);
-                } else {
-                    ctx.globalAlpha = p.life;
-                    ctx.fillStyle = p.color;
-                    ctx.fillRect(p.x, p.y + cameraY, p.size, p.size);
-                    ctx.globalAlpha = 1.0;
-                }
-            }
-        }
-
-        // Loop Principal
-        function gameLoop() {
-            updatePhysics();
-            draw();
-            requestAnimationFrame(gameLoop);
-        }
-
-        // Boot
         resize();
-        gameLoop();
+
+        function startGame(difficulty) {
+            document.getElementById('screen-start').style.display = 'none';
+            gameState = 'playing';
+            
+            if(difficulty === 'easy') config = { budget: 50000, target: 10, mult: 1 };
+            if(difficulty === 'medium') config = { budget: 30000, target: 20, mult: 2 };
+            if(difficulty === 'hard') config = { budget: 15000, target: 40, mult: 3 };
+
+            document.getElementById('target-alt').innerText = config.target;
+            updateHUD();
+            startTimer();
+            loop();
+        }
+
+        /**
+         * MOTOR DE FÍSICA E CÁLCULOS
+         */
+        function calculateStructuralPhysics() {
+            // Reseta tensões
+            blocks.forEach(b => b.tension = 0);
+
+            // Propagação de carga de cima para baixo
+            // Para simplificação em tempo real: ordenamos por Z (altura) descendente
+            let sorted = [...blocks].sort((a,b) => b.z - a.z);
+
+            sorted.forEach(topBlock => {
+                let weight = topBlock.vol * MATERIALS[topBlock.type].density * 9.8;
+                topBlock.tension += weight;
+
+                // Transfere peso para quem está abaixo (contato simples)
+                blocks.forEach(botBlock => {
+                    if (topBlock === botBlock) return;
+                    // Checa colisão AABB simples no plano XY e se está logo abaixo
+                    if (Math.abs(topBlock.x - botBlock.x) < (topBlock.w + botBlock.w)/2 &&
+                        Math.abs(topBlock.y - botBlock.y) < (topBlock.d + botBlock.d)/2 &&
+                        Math.abs(topBlock.z - (botBlock.z + botBlock.h)) < 0.1) {
+                        botBlock.tension += topBlock.tension;
+                    }
+                });
+            });
+
+            // Verifica colapso
+            for (let b of blocks) {
+                let area = b.w * b.d;
+                let pressure = b.tension / area;
+                b.stressRatio = pressure / MATERIALS[b.type].limit;
+
+                if (b.stressRatio > 1.0) return endGame('A estrutura colapsou devido ao excesso de carga!');
+            }
+        }
+
+        /**
+         * RENDERIZAÇÃO ISOMÉTRICA
+         */
+        function toScreen(x, y, z) {
+            // O segredo da projeção 2.5D:
+            const scX = (x - y) * Math.cos(isoAngle);
+            const scY = (x + y) * Math.sin(isoAngle) - z;
+            return {
+                x: canvas.width / 2 + scX * gridSize,
+                y: canvas.height * 0.8 + scY * gridSize
+            };
+        }
+
+        function drawBlock(b) {
+            const mat = MATERIALS[b.type];
+            // Cor baseada no stress (Verde -> Vermelho)
+            const r = Math.floor(255 * b.stressRatio);
+            const g = Math.floor(255 * (1 - b.stressRatio));
+            const color = `rgb(${r},${g},50)`;
+
+            const points = [
+                toScreen(b.x - b.w/2, b.y - b.d/2, b.z),
+                toScreen(b.x + b.w/2, b.y - b.d/2, b.z),
+                toScreen(b.x + b.w/2, b.y + b.d/2, b.z),
+                toScreen(b.x - b.w/2, b.y + b.d/2, b.z),
+                toScreen(b.x - b.w/2, b.y - b.d/2, b.z + b.h),
+                toScreen(b.x + b.w/2, b.y - b.d/2, b.z + b.h),
+                toScreen(b.x + b.w/2, b.y + b.d/2, b.z + b.h),
+                toScreen(b.x - b.w/2, b.y + b.d/2, b.z + b.h)
+            ];
+
+            const drawFace = (pIdx, fColor) => {
+                ctx.beginPath();
+                ctx.fillStyle = fColor;
+                ctx.moveTo(points[pIdx[0]].x, points[pIdx[0]].y);
+                pIdx.forEach(i => ctx.lineTo(points[i].x, points[i].y));
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+            };
+
+            ctx.strokeStyle = "rgba(0,0,0,0.2)";
+            drawFace([0,1,5,4], color); // Leste
+            drawFace([1,2,6,5], color); // Sul
+            drawFace([4,5,6,7], color); // Topo
+        }
+
+        /**
+         * LÓGICA DE JOGO
+         */
+        function loop() {
+            if (gameState !== 'playing') return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Desenha Chão/Grid
+            ctx.beginPath();
+            ctx.strokeStyle = "#444";
+            for(let i=-5; i<=5; i++) {
+                let p1 = toScreen(i, -5, 0); let p2 = toScreen(i, 5, 0);
+                ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+                p1 = toScreen(-5, i, 0); p2 = toScreen(5, i, 0);
+                ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+            }
+            ctx.stroke();
+
+            // Ordena blocos para o "Painter's Algorithm" (quem tá atrás/baixo desenha primeiro)
+            blocks.sort((a,b) => (a.z - b.z) || (a.x + a.y) - (b.x + b.y));
+            blocks.forEach(drawBlock);
+
+            calculateStructuralPhysics();
+            checkWinCondition();
+
+            requestAnimationFrame(loop);
+        }
+
+        function checkWinCondition() {
+            let maxH = blocks.reduce((max, b) => Math.max(max, b.z + b.h), 0);
+            document.getElementById('txt-alt').innerText = maxH.toFixed(1);
+            
+            if (maxH >= config.target) {
+                endGame('Objetivo de altura alcançado!', true);
+            }
+        }
+
+        function startTimer() {
+            const timerEl = document.getElementById('timer');
+            const interval = setInterval(() => {
+                if (gameState !== 'playing') { clearInterval(interval); return; }
+                
+                timeLeft--;
+                let min = Math.floor(timeLeft / 60);
+                let sec = timeLeft % 60;
+                timerEl.innerText = `${min.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`;
+
+                if (timeLeft <= 60) timerEl.classList.add('critical-time');
+                if (timeLeft <= 0) endGame('O tempo acabou!');
+            }, 1000);
+        }
+
+        /**
+         * INPUT E CONSTRUÇÃO
+         */
+        canvas.addEventListener('mousedown', (e) => {
+            if (gameState !== 'playing') return;
+
+            // Simplificação de Raycasting para Grid Isométrico:
+            // Convertemos o clique de volta para coordenadas de mundo aproximadas
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left - canvas.width/2;
+            const mouseY = e.clientY - rect.top - canvas.height*0.8;
+
+            // Inversa da projeção (Z considerado 0 para o clique inicial ou baseado no topo)
+            let currZ = findTopAt(0, 0); // Simplificado para centro
+            
+            // Para este protótipo, vamos permitir construir empilhado no centro ou adjacente
+            const mat = MATERIALS[currentTool];
+            
+            if (config.budget < mat.cost) return;
+
+            // Lógica de posicionamento (empilhamento automático)
+            let spawnZ = 0;
+            blocks.forEach(b => {
+                if (b.z + b.h > spawnZ) spawnZ = b.z + b.h;
+            });
+
+            const newBlock = {
+                type: currentTool,
+                x: 0, y: 0, z: spawnZ,
+                w: mat.w, h: mat.h, d: mat.d,
+                vol: mat.w * mat.h * mat.d,
+                stressRatio: 0, tension: 0
+            };
+
+            blocks.push(newBlock);
+            config.budget -= mat.cost;
+            updateHUD();
+
+            if (config.budget < 0) endGame('Seu orçamento estourou!');
+        });
+
+        function findTopAt(x, y) {
+            let top = 0;
+            blocks.forEach(b => { if(b.z + b.h > top) top = b.z + b.h; });
+            return top;
+        }
+
+        function setTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function updateHUD() {
+            document.getElementById('txt-budget').innerText = config.budget;
+        }
+
+        /**
+         * RANKING E FINALIZAÇÃO
+         */
+        function endGame(msg, win = false) {
+            gameState = 'end';
+            document.getElementById('screen-gameover').style.display = 'flex';
+            document.getElementById('end-title').innerText = win ? "MISSÃO CUMPRIDA!" : "FALHA ESTRUTURAL";
+            document.getElementById('end-title').style.color = win ? "var(--success)" : "var(--danger)";
+            document.getElementById('end-msg').innerText = msg;
+
+            if (win) {
+                /** * FÓRMULA DE PONTUAÇÃO:
+                 * (Grana que sobrou + (tempo restante * 10)) * Dificuldade
+                 */
+                let score = Math.floor((config.budget + (timeLeft * 10)) * config.mult);
+                document.getElementById('final-score').innerText = score;
+                document.getElementById('win-section').style.display = 'block';
+            }
+            showRanking();
+        }
+
+        function saveScore() {
+            const name = document.getElementById('player-name').value.toUpperCase() || 'ANON';
+            const score = parseInt(document.getElementById('final-score').innerText);
+            let ranking = JSON.parse(localStorage.getItem('isometric_rank') || '[]');
+            
+            ranking.push({ name, score });
+            ranking.sort((a, b) => b.score - a.score);
+            ranking = ranking.slice(0, 5);
+            
+            localStorage.setItem('isometric_rank', JSON.stringify(ranking));
+            document.getElementById('win-section').style.display = 'none';
+            showRanking();
+        }
+
+        function showRanking() {
+            let ranking = JSON.parse(localStorage.getItem('isometric_rank') || '[]');
+            let html = '<table class="ranking-table"><tr><th>POS</th><th>ENG</th><th>PTS</th></tr>';
+            ranking.forEach((r, i) => {
+                html += `<tr><td>${i+1}º</td><td>${r.name}</td><td>${r.score}</td></tr>`;
+            });
+            html += '</table>';
+            document.getElementById('ranking-container').innerHTML = html;
+        }
 
     </script>
 </body>
