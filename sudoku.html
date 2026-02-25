@@ -17,10 +17,10 @@
             --danger: #dc3545;
             --danger-bg: #f8d7da;
             --fixed-color: #004085;
-            --fixed-bg: #e9ecef;
+            --fixed-bg: #e9ecef; /* Fundo dos números já preenchidos (Cinza claro) */
             --cell-bg: #ffffff;
-            --cell-selected: #cfe2ff;
-            --cell-highlight: #e2e3e5;
+            --cell-selected: #b6d4fe; /* Célula ativa (Azul mais nítido) */
+            --cell-highlight: #e7f1ff; /* Destaque da linha/coluna/3x3 (Azul bem suave) */
             --draft-color: #6c757d;
             --modal-bg: rgba(0, 0, 0, 0.5);
             --font-main: 'Segoe UI', system-ui, sans-serif;
@@ -39,10 +39,10 @@
             --danger: #ff6b6b;
             --danger-bg: #5c1a1a;
             --fixed-color: #9ec5fe;
-            --fixed-bg: #2d2d2d;
+            --fixed-bg: #2b3035; /* Fundo dos fixos no dark mode (Cinza escuro) */
             --cell-bg: #1e1e1e;
-            --cell-selected: #0a3622; /* Dark green for selection */
-            --cell-highlight: #2b2b2b;
+            --cell-selected: #0d47a1; /* Célula ativa no dark mode (Azul forte) */
+            --cell-highlight: #1a293b; /* Destaque no dark mode (Azul escuro suave) */
             --draft-color: #adb5bd;
             --modal-bg: rgba(0, 0, 0, 0.8);
         }
@@ -212,12 +212,17 @@
             cursor: default;
         }
 
-        .cell.selected {
-            background-color: var(--cell-selected);
-        }
-
         .cell.highlight {
             background-color: var(--cell-highlight);
+        }
+
+        /* Para garantir que uma célula fixa destacada tenha uma cor ligeiramente mesclada (opcional, mas melhora a UI) */
+        .cell.fixed.highlight {
+            background-color: color-mix(in srgb, var(--fixed-bg) 60%, var(--cell-highlight) 40%);
+        }
+
+        .cell.selected {
+            background-color: var(--cell-selected);
         }
 
         .cell.error {
