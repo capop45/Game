@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Engenheiro 3D 2026</title>
+    <title>Engenheiro 3D Paramétrico 2026</title>
     <style>
         :root {
             --primary: #2c3e50;
@@ -20,7 +20,6 @@
             color: white; user-select: none;
         }
 
-        /* Impede comportamentos indesejados no mobile como pinch-to-zoom nativo */
         canvas { 
             display: block; 
             touch-action: none; 
@@ -61,31 +60,66 @@
 
         .btn-tool.active { background: var(--accent); transform: scale(1.1); }
 
-        /* Overlays */
+        /* Painel Paramétrico */
+        #param-panel {
+            position: absolute; right: 20px; top: 80px;
+            background: var(--ui-bg); padding: 15px; border-radius: 10px;
+            display: flex; flex-direction: column; gap: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); z-index: 10;
+            width: 200px;
+        }
+
+        #param-panel h3 { margin: 0 0 10px 0; font-size: 1rem; border-bottom: 1px solid #555; padding-bottom: 5px; }
+        
+        .input-group { display: flex; justify-content: space-between; align-items: center; }
+        .input-group label { font-size: 0.9rem; color: #ddd; }
+        .input-group input {
+            width: 60px; padding: 5px; background: #ecf0f1; border: none;
+            border-radius: 4px; text-align: center; font-weight: bold; color: #333;
+        }
+
+        #dynamic-cost {
+            margin-top: 10px; padding-top: 10px; border-top: 1px dashed #7f8c8d;
+            font-size: 0.9rem; font-weight: bold; color: var(--accent);
+            text-align: right;
+        }
+
+        #help-tip {
+            position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+            background: rgba(230, 126, 34, 0.9); padding: 5px 15px; border-radius: 20px;
+            font-weight: bold; pointer-events: none; opacity: 0; transition: opacity 0.3s;
+            z-index: 20; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        /* Overlays (Start / Game Over) */
         .overlay {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+            position: fixed; inset: 0; background: rgba(0,0,0,0.8);
             backdrop-filter: blur(8px); display: none;
             flex-direction: column; align-items: center; justify-content: center;
             z-index: 100; text-align: center;
         }
 
-        .card { background: var(--primary); padding: 30px; border-radius: 15px; width: 90%; max-width: 400px; }
+        .card { background: var(--primary); padding: 30px; border-radius: 15px; width: 90%; max-width: 450px; }
 
         input[type="text"] {
             background: #ecf0f1; border: none; padding: 10px;
-            font-size: 1.5rem; width: 80px; text-align: center;
+            font-size: 1.5rem; width: 100px; text-align: center;
             text-transform: uppercase; margin: 15px 0; border-radius: 5px;
         }
 
         .ranking-table { width: 100%; margin: 20px 0; border-collapse: collapse; }
-        .ranking-table td { padding: 5px; border-bottom: 1px solid #555; }
+        .ranking-table td { padding: 8px; border-bottom: 1px solid #555; }
+        .ranking-table th { padding: 8px; border-bottom: 2px solid var(--accent); color: var(--accent); }
 
         button.main-btn {
             background: var(--success); color: white; border: none;
             padding: 15px 30px; font-size: 1.2rem; border-radius: 5px;
-            cursor: pointer; width: 100%; margin-top: 10px;
+            cursor: pointer; width: 100%; margin-top: 10px; font-weight: bold;
+            transition: 0.2s;
         }
+        button.main-btn:hover { filter: brightness(1.1); }
     </style>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
@@ -95,10 +129,12 @@
         <div class="stat-box">
             Altura: <span id="txt-alt">0</span> / <span id="target-alt">0</span>m<br>
             Base Mínima: <span id="txt-area">0</span> / <span id="target-area">0</span>m²<br>
-            Custo: R$ <span id="txt-budget">0</span>
+            Orçamento: R$ <span id="txt-budget">0</span>
         </div>
         <div class="stat-box" id="timer">60:00</div>
     </div>
+
+    <div id="help-tip">Modo Desenho: Clique no Ponto Final (ESC para cancelar)</div>
 
     <div id="controls">
         <button class="btn-tool active" onclick="setTool('pilar')">PILAR</button>
@@ -106,13 +142,31 @@
         <button class="btn-tool" onclick="setTool('parede')">PAREDE</button>
     </div>
 
+    <div id="param-panel">
+        <h3>Parâmetros (<span id="current-tool-label">PILAR</span>)</h3>
+        <div class="input-group">
+            <label for="param-w" id="lbl-w">Base X (m):</label>
+            <input type="number" id="param-w" value="0.4" step="0.2" min="0.2">
+        </div>
+        <div class="input-group" id="group-depth">
+            <label for="param-d">Prof. Z (m):</label>
+            <input type="number" id="param-d" value="0.4" step="0.2" min="0.2">
+        </div>
+        <div class="input-group">
+            <label for="param-h">Altura Y (m):</label>
+            <input type="number" id="param-h" value="3.0" step="0.5" min="0.5">
+        </div>
+        <div id="dynamic-cost">Custo Est.: R$ <span id="val-cost">0</span></div>
+        <div style="font-size: 0.75rem; color: #aaa; text-align: center; margin-top: 5px;">Aperte 'R' para rotacionar 90º</div>
+    </div>
+
     <div id="screen-start" class="overlay" style="display: flex;">
         <div class="card">
             <h2>CIVIL MASTER 3D</h2>
-            <p>Selecione a Dificuldade:</p>
-            <button class="main-btn" onclick="startGame('easy')" style="background:#27ae60">FÁCIL (10m Altura / 4m² Base)</button>
-            <button class="main-btn" onclick="startGame('medium')" style="background:#e67e22">MÉDIO (20m Altura / 10m² Base)</button>
-            <button class="main-btn" onclick="startGame('hard')" style="background:#c0392b">DIFÍCIL (40m Altura / 20m² Base)</button>
+            <p>Construa a estrutura mantendo o equilíbrio das cargas.</p>
+            <button class="main-btn" onclick="startGame('easy')" style="background:#27ae60">FÁCIL (10m Alt. / 4m² Base)</button>
+            <button class="main-btn" onclick="startGame('medium')" style="background:#e67e22">MÉDIO (20m Alt. / 10m² Base)</button>
+            <button class="main-btn" onclick="startGame('hard')" style="background:#c0392b">DIFÍCIL (40m Alt. / 20m² Base)</button>
         </div>
     </div>
 
@@ -126,7 +180,7 @@
                 <button class="main-btn" onclick="saveScore()">Salvar Ranking</button>
             </div>
             <div id="ranking-container"></div>
-            <button class="main-btn" onclick="location.reload()" style="background:#7f8c8d">Reiniciar</button>
+            <button class="main-btn" onclick="location.reload()" style="background:#7f8c8d; margin-top: 20px;">Reiniciar Projeto</button>
         </div>
     </div>
 
@@ -142,17 +196,21 @@
         let blocks = [];
         let currentTool = 'pilar';
 
+        // Custos agora são interpretados como Valor por Metro Cúbico (R$/m³)
         const MATERIALS = {
-            pilar:  { w: 0.4, h: 3, d: 0.4, cost: 500, density: 2400, limit: 25000000, color: 0x95a5a6 },
-            viga:   { w: 2.0, h: 0.4, d: 0.4, cost: 300, density: 2400, limit: 15000000, color: 0x7f8c8d },
-            parede: { w: 2.0, h: 3.0, d: 0.2, cost: 200, density: 1600, limit: 5000000,  color: 0xd35400 }
+            pilar:  { costPerM3: 3125, density: 2400, limit: 25000000, color: 0x95a5a6 }, // Ex: 0.4*0.4*3 * 3125 = ~1500
+            viga:   { costPerM3: 2000, density: 2400, limit: 15000000, color: 0x7f8c8d },
+            parede: { costPerM3: 1500, density: 1600, limit: 5000000,  color: 0xd35400 }
         };
 
-        const GRID_SNAP = 0.2; // Precisão de alinhamento ao construir
+        const GRID_SNAP = 0.2; 
+        let drawState = 0; // 0: Idle, 1: Drawing
+        let pointA = new THREE.Vector3();
+        let currentRotationY = 0;
 
         /**
          * ==========================================
-         * 2. SETUP DO THREE.JS (CENA, CÂMERA, LUZES)
+         * 2. SETUP DO THREE.JS
          * ==========================================
          */
         const scene = new THREE.Scene();
@@ -166,26 +224,25 @@
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        // Controles de Câmera (Mobile Touch-Friendly)
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.dampingFactor = 0.05;
-        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Impede a câmera de ir para baixo da terra
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; 
 
-        // Luzes
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambientLight);
 
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
         dirLight.position.set(20, 40, 20);
         dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
         dirLight.shadow.camera.left = -20;
         dirLight.shadow.camera.right = 20;
         dirLight.shadow.camera.top = 20;
         dirLight.shadow.camera.bottom = -20;
         scene.add(dirLight);
 
-        // Chão e Grid
         const gridHelper = new THREE.GridHelper(40, 40, 0x000000, 0x000000);
         gridHelper.material.opacity = 0.2;
         gridHelper.material.transparent = true;
@@ -198,7 +255,13 @@
         groundPlane.receiveShadow = true;
         scene.add(groundPlane);
 
-        // Ajuste de Tela (Responsividade)
+        // Ghost Object setup
+        const ghostMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0x00ff00, transparent: true, opacity: 0.6, depthWrite: false 
+        });
+        let ghostMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ghostMaterial);
+        scene.add(ghostMesh);
+
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -207,13 +270,67 @@
 
         /**
          * ==========================================
-         * 3. LÓGICA DE RAYCASTING E CONSTRUÇÃO
+         * 3. LÓGICA PARAMÉTRICA E UI
+         * ==========================================
+         */
+        function getParams() {
+            const w = parseFloat(document.getElementById('param-w').value) || 0.4;
+            const h = parseFloat(document.getElementById('param-h').value) || 3.0;
+            const d = currentTool === 'pilar' ? (parseFloat(document.getElementById('param-d').value) || 0.4) : w; 
+            return { w, h, d };
+        }
+
+        function updateEstimatedCost(vol) {
+            const baseCost = MATERIALS[currentTool].costPerM3;
+            const totalCost = Math.round(vol * baseCost);
+            document.getElementById('val-cost').innerText = totalCost;
+            
+            // Feedback visual no holograma se não houver dinheiro
+            ghostMaterial.color.setHex(config.budget >= totalCost ? 0x00ff00 : 0xff0000);
+            return totalCost;
+        }
+
+        function setTool(tool) {
+            if (drawState === 1) cancelDrawing(); // Reseta estado de desenho ao trocar de ferramenta
+
+            currentTool = tool;
+            document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            document.getElementById('current-tool-label').innerText = tool.toUpperCase();
+
+            // Ajusta os inputs baseados na ferramenta
+            const groupDepth = document.getElementById('group-depth');
+            const lblW = document.getElementById('lbl-w');
+            
+            if (tool === 'pilar') {
+                groupDepth.style.display = 'flex';
+                lblW.innerText = 'Base X (m):';
+                document.getElementById('param-w').value = 0.4;
+                document.getElementById('param-d').value = 0.4;
+                document.getElementById('param-h').value = 3.0;
+            } else if (tool === 'viga') {
+                groupDepth.style.display = 'none';
+                lblW.innerText = 'Espessura (m):';
+                document.getElementById('param-w').value = 0.4;
+                document.getElementById('param-h').value = 0.4;
+            } else if (tool === 'parede') {
+                groupDepth.style.display = 'none';
+                lblW.innerText = 'Espessura (m):';
+                document.getElementById('param-w').value = 0.2;
+                document.getElementById('param-h').value = 3.0;
+            }
+            
+            currentRotationY = 0; // Reseta rotação
+        }
+
+        /**
+         * ==========================================
+         * 4. RAYCASTING E MÁQUINA DE ESTADOS (DRAWING)
          * ==========================================
          */
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
-
-        // Variável para evitar construir enquanto o usuário arrasta a tela (OrbitControls)
         let isDragging = false;
         let pointerDownPos = { x: 0, y: 0 };
 
@@ -224,88 +341,159 @@
         });
 
         window.addEventListener('pointermove', (e) => {
+            if (gameState !== 'playing' || e.target.tagName !== 'CANVAS') return;
+
+            // Detecta se é um arrasto de câmera para não acionar cliques falsos
             if (Math.abs(e.clientX - pointerDownPos.x) > 5 || Math.abs(e.clientY - pointerDownPos.y) > 5) {
                 isDragging = true;
             }
-        });
-
-        window.addEventListener('pointerup', (e) => {
-            if (gameState !== 'playing' || e.target.tagName !== 'CANVAS' || isDragging) return;
 
             mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
             raycaster.setFromCamera(mouse, camera);
-
-            // Alvos: Peças construídas + Chão
             const targets = blocks.map(b => b.mesh).concat(groundPlane);
             const intersects = raycaster.intersectObjects(targets);
 
             if (intersects.length > 0) {
                 const intersect = intersects[0];
-                buildBlock(intersect);
+                const normal = intersect.face.normal;
+                
+                // Snap-to-grid global
+                let snapX = Math.round((intersect.point.x + normal.x * 0.1) / GRID_SNAP) * GRID_SNAP;
+                let snapZ = Math.round((intersect.point.z + normal.z * 0.1) / GRID_SNAP) * GRID_SNAP;
+                
+                const params = getParams();
+                let posY = (intersect.object === groundPlane) 
+                    ? params.h / 2 
+                    : intersect.object.position.y + (intersect.object.geometry.parameters.height / 2) + (params.h / 2);
+
+                if (drawState === 0) {
+                    // MODO IDLE: Prévia da peça solta
+                    let finalW = params.w, finalD = params.d;
+                    
+                    if (currentTool !== 'pilar') {
+                        finalD = params.w; // No modo idle, mostra só a seção transversal
+                    }
+
+                    ghostMesh.geometry.dispose();
+                    ghostMesh.geometry = new THREE.BoxGeometry(finalW, params.h, finalD);
+                    ghostMesh.position.set(snapX, posY, snapZ);
+                    ghostMesh.rotation.y = currentRotationY;
+                    
+                    updateEstimatedCost(finalW * params.h * finalD);
+
+                } else if (drawState === 1 && currentTool !== 'pilar') {
+                    // MODO DESENHO: Esticando Viga/Parede
+                    let ptB = new THREE.Vector3(snapX, posY, snapZ);
+                    
+                    let dx = ptB.x - pointA.x;
+                    let dz = ptB.z - pointA.z;
+                    
+                    let length = Math.sqrt(dx * dx + dz * dz);
+                    if (length < GRID_SNAP) length = GRID_SNAP; 
+                    
+                    let centerX = (pointA.x + ptB.x) / 2;
+                    let centerZ = (pointA.z + ptB.z) / 2;
+                    
+                    // Cálculo do Ângulo no plano XZ
+                    let angleY = -Math.atan2(dz, dx);
+
+                    ghostMesh.geometry.dispose();
+                    ghostMesh.geometry = new THREE.BoxGeometry(length, params.h, params.w);
+                    ghostMesh.position.set(centerX, pointA.y, centerZ);
+                    ghostMesh.rotation.y = angleY;
+                    
+                    updateEstimatedCost(length * params.h * params.w);
+                }
             }
         });
 
-        function buildBlock(intersect) {
-            const matDef = MATERIALS[currentTool];
-            if (config.budget < matDef.cost) return;
+        window.addEventListener('pointerup', (e) => {
+            if (e.button !== 0 || gameState !== 'playing' || e.target.tagName !== 'CANVAS' || isDragging) return;
 
-            const normal = intersect.face.normal;
-            
-            // Posição baseada no ponto clicado + avanço no eixo da normal
-            let pX = intersect.point.x + normal.x * (matDef.w / 2);
-            let pY = intersect.point.y + normal.y * (matDef.h / 2);
-            let pZ = intersect.point.z + normal.z * (matDef.d / 2);
-
-            // Snap ao grid nos eixos X e Z para manter alinhamento
-            pX = Math.round(pX / GRID_SNAP) * GRID_SNAP;
-            pZ = Math.round(pZ / GRID_SNAP) * GRID_SNAP;
-
-            // Tratamento especial para o eixo Y (Altura) para encaixe perfeito
-            if (intersect.object === groundPlane) {
-                pY = matDef.h / 2;
-            } else if (normal.y > 0.5) { // Clicou no topo de um bloco
-                pY = intersect.object.position.y + (intersect.object.geometry.parameters.height / 2) + (matDef.h / 2);
+            if (drawState === 0) {
+                if (currentTool === 'pilar') {
+                    buildFinalPiece();
+                } else {
+                    // Inicia o desenho da Viga/Parede
+                    pointA.copy(ghostMesh.position);
+                    drawState = 1;
+                    document.getElementById('help-tip').style.opacity = '1';
+                }
+            } else if (drawState === 1) {
+                // Finaliza o desenho
+                buildFinalPiece();
+                drawState = 0;
+                document.getElementById('help-tip').style.opacity = '0';
             }
+        });
 
-            // Criação do Mesh
-            const geo = new THREE.BoxGeometry(matDef.w, matDef.h, matDef.d);
-            const mat = new THREE.MeshStandardMaterial({ color: matDef.color });
-            const mesh = new THREE.Mesh(geo, mat);
-            mesh.position.set(pX, pY, pZ);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
+        // Controles de Teclado
+        window.addEventListener('keydown', (e) => {
+            if (gameState !== 'playing') return;
+            
+            if (e.key === 'r' || e.key === 'R') {
+                if (drawState === 0) {
+                    currentRotationY += Math.PI / 2;
+                    ghostMesh.rotation.y = currentRotationY;
+                }
+            }
+            if (e.key === 'Escape') cancelDrawing();
+        });
 
-            scene.add(mesh);
-
-            // Objeto lógico de negócio
-            const newBlock = {
-                type: currentTool,
-                w: matDef.w, h: matDef.h, d: matDef.d,
-                vol: matDef.w * matDef.h * matDef.d,
-                mesh: mesh,
-                tension: 0,
-                baseColor: new THREE.Color(matDef.color)
-            };
-
-            blocks.push(newBlock);
-            config.budget -= matDef.cost;
-            updateHUD();
-
-            if (config.budget < 0) endGame('Seu orçamento estourou!');
+        function cancelDrawing() {
+            if (drawState === 1) {
+                drawState = 0;
+                document.getElementById('help-tip').style.opacity = '0';
+                
+                // Força recálculo do ghostMesh voltando ao estado Idle
+                const params = getParams();
+                ghostMesh.geometry.dispose();
+                ghostMesh.geometry = new THREE.BoxGeometry(params.w, params.h, currentTool === 'pilar' ? params.d : params.w);
+            }
         }
 
         /**
          * ==========================================
-         * 4. FÍSICA E REGRAS DE NEGÓCIO
+         * 5. CONSTRUÇÃO E FÍSICA
          * ==========================================
          */
+        function buildFinalPiece() {
+            const geoParams = ghostMesh.geometry.parameters;
+            const vol = geoParams.width * geoParams.height * geoParams.depth;
+            const totalCost = updateEstimatedCost(vol);
+            
+            if (config.budget < totalCost) return; // Cancela se sem saldo
+
+            const matDef = MATERIALS[currentTool];
+            const finalGeo = new THREE.BoxGeometry(geoParams.width, geoParams.height, geoParams.depth);
+            const finalMat = new THREE.MeshStandardMaterial({ color: matDef.color });
+            const finalMesh = new THREE.Mesh(finalGeo, finalMat);
+            
+            finalMesh.position.copy(ghostMesh.position);
+            finalMesh.rotation.copy(ghostMesh.rotation);
+            finalMesh.castShadow = true;
+            finalMesh.receiveShadow = true;
+
+            scene.add(finalMesh);
+
+            const newBlock = {
+                type: currentTool,
+                w: geoParams.width, h: geoParams.height, d: geoParams.depth,
+                vol: vol, mesh: finalMesh, tension: 0,
+                baseColor: new THREE.Color(matDef.color)
+            };
+
+            blocks.push(newBlock);
+            config.budget -= totalCost;
+            updateHUD();
+        }
+
         function calculatePhysics() {
-            // Reseta tensões
             blocks.forEach(b => b.tension = 0);
 
-            // Ordena de cima para baixo (eixo Y)
+            // Ordena de cima para baixo
             let sorted = [...blocks].sort((a,b) => b.mesh.position.y - a.mesh.position.y);
 
             sorted.forEach(topBlock => {
@@ -315,40 +503,37 @@
                 blocks.forEach(botBlock => {
                     if (topBlock === botBlock) return;
                     
-                    // Verifica se botBlock está imediatamente abaixo e tocando topBlock
                     const tY = topBlock.mesh.position.y;
                     const bY = botBlock.mesh.position.y;
-                    const tH = topBlock.h;
-                    const bH = botBlock.h;
 
-                    if (Math.abs((tY - tH/2) - (bY + bH/2)) < 0.1) {
-                        // Verifica AABB em X e Z para ver se há sobreposição
-                        const tx = topBlock.mesh.position.x;
-                        const tz = topBlock.mesh.position.z;
-                        const bx = botBlock.mesh.position.x;
-                        const bz = botBlock.mesh.position.z;
-
-                        if (Math.abs(tx - bx) < (topBlock.w + botBlock.w)/2 - 0.01 &&
-                            Math.abs(tz - bz) < (topBlock.d + botBlock.d)/2 - 0.01) {
+                    // Checa contato vertical
+                    if (Math.abs((tY - topBlock.h/2) - (bY + botBlock.h/2)) < 0.1) {
+                        // O boundingBox dinâmico garante que colisões levem a rotação em conta
+                        const tBox = new THREE.Box3().setFromObject(topBlock.mesh);
+                        const bBox = new THREE.Box3().setFromObject(botBlock.mesh);
+                        
+                        if (tBox.intersectsBox(bBox)) {
                             botBlock.tension += topBlock.tension;
                         }
                     }
                 });
             });
 
-            // Aplica cor de stress e verifica colapso
             const dangerColor = new THREE.Color(0xe74c3c);
 
             for (let b of blocks) {
-                let area = b.w * b.d;
-                let pressure = b.tension / area;
+                // Cálculo de stress simplificado pela área bounding box no plano XZ
+                const box = new THREE.Box3().setFromObject(b.mesh);
+                let areaX = box.max.x - box.min.x;
+                let areaZ = box.max.z - box.min.z;
+                let pressure = b.tension / (areaX * areaZ);
+                
                 let stressRatio = pressure / MATERIALS[b.type].limit;
 
-                // Interpola a cor natural com a cor de perigo
                 b.mesh.material.color.lerpColors(b.baseColor, dangerColor, Math.min(stressRatio, 1));
 
                 if (stressRatio > 1.0) {
-                    endGame('A estrutura colapsou devido ao excesso de carga!');
+                    endGame('Colapso Estrutural! Pressão excedeu limite do material.');
                     return;
                 }
             }
@@ -357,35 +542,35 @@
         function checkWinCondition() {
             if (blocks.length === 0) return;
 
-            // 1. Calcula Altura Máxima (Topo do bloco mais alto)
             let maxH = blocks.reduce((max, b) => Math.max(max, b.mesh.position.y + b.h/2), 0);
             
-            // 2. Calcula Área da Base (Footprint)
-            // Consideramos peças "na base" aquelas cujo fundo toca o chão (Y - H/2 <= 0.1)
             let baseArea = blocks
                 .filter(b => (b.mesh.position.y - b.h/2) <= 0.1)
-                .reduce((sum, b) => sum + (b.w * b.d), 0);
+                .reduce((sum, b) => {
+                    const box = new THREE.Box3().setFromObject(b.mesh);
+                    return sum + ((box.max.x - box.min.x) * (box.max.z - box.min.z));
+                }, 0);
 
             document.getElementById('txt-alt').innerText = maxH.toFixed(1);
             document.getElementById('txt-area').innerText = baseArea.toFixed(1);
             
             if (maxH >= config.targetAlt && baseArea >= config.targetArea) {
-                endGame('Objetivos de Altura e Área alcançados!', true);
+                endGame('Objetivos de Altura e Área alcançados com sucesso!', true);
             }
         }
 
         /**
          * ==========================================
-         * 5. LÓGICA DE INTERFACE E ESTADO
+         * 6. LÓGICA DE JOGO, UI E LOOP
          * ==========================================
          */
         function startGame(difficulty) {
             document.getElementById('screen-start').style.display = 'none';
             gameState = 'playing';
             
-            if(difficulty === 'easy') config = { budget: 50000, targetAlt: 10, targetArea: 4, mult: 1 };
-            if(difficulty === 'medium') config = { budget: 30000, targetAlt: 20, targetArea: 10, mult: 2 };
-            if(difficulty === 'hard') config = { budget: 15000, targetAlt: 40, targetArea: 20, mult: 3 };
+            if(difficulty === 'easy') config = { budget: 100000, targetAlt: 10, targetArea: 4, mult: 1 };
+            if(difficulty === 'medium') config = { budget: 60000, targetAlt: 20, targetArea: 10, mult: 2 };
+            if(difficulty === 'hard') config = { budget: 30000, targetAlt: 40, targetArea: 20, mult: 3 };
 
             document.getElementById('target-alt').innerText = config.targetAlt;
             document.getElementById('target-area').innerText = config.targetArea;
@@ -395,14 +580,8 @@
             animate();
         }
 
-        function setTool(tool) {
-            currentTool = tool;
-            document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
-        }
-
         function updateHUD() {
-            document.getElementById('txt-budget').innerText = config.budget;
+            document.getElementById('txt-budget').innerText = config.budget.toLocaleString('pt-BR');
         }
 
         function startTimer() {
@@ -416,14 +595,14 @@
                 timerEl.innerText = `${min.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`;
 
                 if (timeLeft <= 60) timerEl.classList.add('critical-time');
-                if (timeLeft <= 0) endGame('O tempo acabou!');
+                if (timeLeft <= 0) endGame('O tempo da obra estourou!');
             }, 1000);
         }
 
         function endGame(msg, win = false) {
             gameState = 'end';
             document.getElementById('screen-gameover').style.display = 'flex';
-            document.getElementById('end-title').innerText = win ? "MISSÃO CUMPRIDA!" : "FALHA ESTRUTURAL";
+            document.getElementById('end-title').innerText = win ? "PROJETO APROVADO!" : "FALHA NA OBRA";
             document.getElementById('end-title').style.color = win ? "var(--success)" : "var(--danger)";
             document.getElementById('end-msg').innerText = msg;
 
@@ -436,39 +615,34 @@
         }
 
         function saveScore() {
-            const name = document.getElementById('player-name').value.toUpperCase() || 'ANO';
+            const name = document.getElementById('player-name').value.toUpperCase() || 'ENG';
             const score = parseInt(document.getElementById('final-score').innerText);
-            let ranking = JSON.parse(localStorage.getItem('isometric_rank') || '[]');
+            let ranking = JSON.parse(localStorage.getItem('civil_master_rank') || '[]');
             
             ranking.push({ name, score });
             ranking.sort((a, b) => b.score - a.score);
             ranking = ranking.slice(0, 5);
             
-            localStorage.setItem('isometric_rank', JSON.stringify(ranking));
+            localStorage.setItem('civil_master_rank', JSON.stringify(ranking));
             document.getElementById('win-section').style.display = 'none';
             showRanking();
         }
 
         function showRanking() {
-            let ranking = JSON.parse(localStorage.getItem('isometric_rank') || '[]');
+            let ranking = JSON.parse(localStorage.getItem('civil_master_rank') || '[]');
             let html = '<table class="ranking-table"><tr><th>POS</th><th>ENG</th><th>PTS</th></tr>';
             ranking.forEach((r, i) => {
-                html += `<tr><td>${i+1}º</td><td>${r.name}</td><td>${r.score}</td></tr>`;
+                html += `<tr><td>${i+1}º</td><td>${r.name}</td><td>${r.score.toLocaleString('pt-BR')}</td></tr>`;
             });
             html += '</table>';
             document.getElementById('ranking-container').innerHTML = html;
         }
 
-        /**
-         * ==========================================
-         * 6. LOOP DE RENDERIZAÇÃO
-         * ==========================================
-         */
         function animate() {
             if (gameState !== 'playing') return;
             requestAnimationFrame(animate);
 
-            controls.update(); // Necessário por conta do enableDamping
+            controls.update(); 
             
             if (blocks.length > 0) {
                 calculatePhysics();
@@ -478,8 +652,18 @@
             renderer.render(scene, camera);
         }
 
-        // Renderização estática inicial para a tela de Start
-        renderer.render(scene, camera);
+        renderer.render(scene, camera); // Render inicial para o background da tela Start
+        
+        // Listener dinâmico para os inputs atualizarem o preview imediatamente
+        ['param-w', 'param-d', 'param-h'].forEach(id => {
+            document.getElementById(id).addEventListener('input', () => {
+                if (gameState === 'playing' && drawState === 0) {
+                    const params = getParams();
+                    ghostMesh.geometry.dispose();
+                    ghostMesh.geometry = new THREE.BoxGeometry(params.w, params.h, currentTool === 'pilar' ? params.d : params.w);
+                }
+            });
+        });
 
     </script>
 </body>
