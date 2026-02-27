@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Engenheiro Isométrico 2026</title>
+    <title>Engenheiro 3D 2026</title>
     <style>
         :root {
             --primary: #2c3e50;
@@ -20,16 +20,25 @@
             color: white; user-select: none;
         }
 
-        canvas { display: block; touch-action: none; }
+        /* Impede comportamentos indesejados no mobile como pinch-to-zoom nativo */
+        canvas { 
+            display: block; 
+            touch-action: none; 
+            outline: none;
+        }
 
         /* HUD & UI */
         #hud {
             position: absolute; top: 10px; left: 10px; right: 10px;
             display: flex; justify-content: space-between;
             pointer-events: none; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            z-index: 10;
         }
 
-        .stat-box { background: var(--ui-bg); padding: 10px; border-radius: 8px; border-left: 4px solid var(--accent); }
+        .stat-box { 
+            background: var(--ui-bg); padding: 10px; 
+            border-radius: 8px; border-left: 4px solid var(--accent); 
+        }
 
         #timer { font-weight: bold; font-size: 1.5rem; transition: color 0.3s; }
         .critical-time { color: var(--danger); animation: blink 0.5s infinite; }
@@ -41,12 +50,13 @@
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 10px; background: var(--ui-bg);
             padding: 15px; border-radius: 50px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 10;
         }
 
         .btn-tool {
             background: #7f8c8d; border: none; padding: 12px 20px;
             color: white; border-radius: 25px; cursor: pointer;
-            transition: 0.2s; font-weight: bold;
+            transition: 0.2s; font-weight: bold; pointer-events: auto;
         }
 
         .btn-tool.active { background: var(--accent); transform: scale(1.1); }
@@ -76,30 +86,33 @@
             cursor: pointer; width: 100%; margin-top: 10px;
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
 
     <div id="hud">
         <div class="stat-box">
             Altura: <span id="txt-alt">0</span> / <span id="target-alt">0</span>m<br>
+            Base Mínima: <span id="txt-area">0</span> / <span id="target-area">0</span>m²<br>
             Custo: R$ <span id="txt-budget">0</span>
         </div>
         <div class="stat-box" id="timer">60:00</div>
     </div>
 
     <div id="controls">
-        <button class="btn-tool active" onclick="setTool('pilar')">PILAR (Concrete)</button>
-        <button class="btn-tool" onclick="setTool('viga')">VIGA (Concrete)</button>
-        <button class="btn-tool" onclick="setTool('parede')">PAREDE (Alv.)</button>
+        <button class="btn-tool active" onclick="setTool('pilar')">PILAR</button>
+        <button class="btn-tool" onclick="setTool('viga')">VIGA</button>
+        <button class="btn-tool" onclick="setTool('parede')">PAREDE</button>
     </div>
 
     <div id="screen-start" class="overlay" style="display: flex;">
         <div class="card">
-            <h2>CIVIL MASTER 2.5D</h2>
+            <h2>CIVIL MASTER 3D</h2>
             <p>Selecione a Dificuldade:</p>
-            <button class="main-btn" onclick="startGame('easy')" style="background:#27ae60">FÁCIL (Alvo 10m)</button>
-            <button class="main-btn" onclick="startGame('medium')" style="background:#e67e22">MÉDIO (Alvo 20m)</button>
-            <button class="main-btn" onclick="startGame('hard')" style="background:#c0392b">DIFÍCIL (Alvo 40m)</button>
+            <button class="main-btn" onclick="startGame('easy')" style="background:#27ae60">FÁCIL (10m Altura / 4m² Base)</button>
+            <button class="main-btn" onclick="startGame('medium')" style="background:#e67e22">MÉDIO (20m Altura / 10m² Base)</button>
+            <button class="main-btn" onclick="startGame('hard')" style="background:#c0392b">DIFÍCIL (40m Altura / 20m² Base)</button>
         </div>
     </div>
 
@@ -117,173 +130,279 @@
         </div>
     </div>
 
-    <canvas id="gameCanvas"></canvas>
-
     <script>
         /**
-         * CONFIGURAÇÕES E ESTADOS
+         * ==========================================
+         * 1. CONFIGURAÇÕES GERAIS E ESTADO DO JOGO
+         * ==========================================
          */
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        
         let gameState = 'start';
-        let config = { budget: 0, target: 0, mult: 1 };
-        let timeLeft = 3600; // 60 minutos
+        let config = { budget: 0, targetAlt: 0, targetArea: 0, mult: 1 };
+        let timeLeft = 3600;
         let blocks = [];
         let currentTool = 'pilar';
-        let gridSize = 40;
-        let isoAngle = Math.PI / 6;
 
         const MATERIALS = {
-            pilar:  { w: 0.4, h: 3, d: 0.4, cost: 500, density: 2400, limit: 25000000, color: '#95a5a6' },
-            viga:   { w: 2, h: 0.4, d: 0.4, cost: 300, density: 2400, limit: 15000000, color: '#7f8c8d' },
-            parede: { w: 2, h: 3, d: 0.2, cost: 200, density: 1600, limit: 5000000, color: '#d35400' }
+            pilar:  { w: 0.4, h: 3, d: 0.4, cost: 500, density: 2400, limit: 25000000, color: 0x95a5a6 },
+            viga:   { w: 2.0, h: 0.4, d: 0.4, cost: 300, density: 2400, limit: 15000000, color: 0x7f8c8d },
+            parede: { w: 2.0, h: 3.0, d: 0.2, cost: 200, density: 1600, limit: 5000000,  color: 0xd35400 }
         };
 
-        /**
-         * INICIALIZAÇÃO
-         */
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resize);
-        resize();
+        const GRID_SNAP = 0.2; // Precisão de alinhamento ao construir
 
-        function startGame(difficulty) {
-            document.getElementById('screen-start').style.display = 'none';
-            gameState = 'playing';
+        /**
+         * ==========================================
+         * 2. SETUP DO THREE.JS (CENA, CÂMERA, LUZES)
+         * ==========================================
+         */
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x34495e);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(15, 15, 15);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // Controles de Câmera (Mobile Touch-Friendly)
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Impede a câmera de ir para baixo da terra
+
+        // Luzes
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        dirLight.position.set(20, 40, 20);
+        dirLight.castShadow = true;
+        dirLight.shadow.camera.left = -20;
+        dirLight.shadow.camera.right = 20;
+        dirLight.shadow.camera.top = 20;
+        dirLight.shadow.camera.bottom = -20;
+        scene.add(dirLight);
+
+        // Chão e Grid
+        const gridHelper = new THREE.GridHelper(40, 40, 0x000000, 0x000000);
+        gridHelper.material.opacity = 0.2;
+        gridHelper.material.transparent = true;
+        scene.add(gridHelper);
+
+        const groundGeo = new THREE.PlaneGeometry(40, 40);
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x2c3e50, depthWrite: false });
+        const groundPlane = new THREE.Mesh(groundGeo, groundMat);
+        groundPlane.rotation.x = -Math.PI / 2;
+        groundPlane.receiveShadow = true;
+        scene.add(groundPlane);
+
+        // Ajuste de Tela (Responsividade)
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        /**
+         * ==========================================
+         * 3. LÓGICA DE RAYCASTING E CONSTRUÇÃO
+         * ==========================================
+         */
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // Variável para evitar construir enquanto o usuário arrasta a tela (OrbitControls)
+        let isDragging = false;
+        let pointerDownPos = { x: 0, y: 0 };
+
+        window.addEventListener('pointerdown', (e) => {
+            if (gameState !== 'playing' || e.target.tagName !== 'CANVAS') return;
+            pointerDownPos = { x: e.clientX, y: e.clientY };
+            isDragging = false;
+        });
+
+        window.addEventListener('pointermove', (e) => {
+            if (Math.abs(e.clientX - pointerDownPos.x) > 5 || Math.abs(e.clientY - pointerDownPos.y) > 5) {
+                isDragging = true;
+            }
+        });
+
+        window.addEventListener('pointerup', (e) => {
+            if (gameState !== 'playing' || e.target.tagName !== 'CANVAS' || isDragging) return;
+
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+
+            // Alvos: Peças construídas + Chão
+            const targets = blocks.map(b => b.mesh).concat(groundPlane);
+            const intersects = raycaster.intersectObjects(targets);
+
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                buildBlock(intersect);
+            }
+        });
+
+        function buildBlock(intersect) {
+            const matDef = MATERIALS[currentTool];
+            if (config.budget < matDef.cost) return;
+
+            const normal = intersect.face.normal;
             
-            if(difficulty === 'easy') config = { budget: 50000, target: 10, mult: 1 };
-            if(difficulty === 'medium') config = { budget: 30000, target: 20, mult: 2 };
-            if(difficulty === 'hard') config = { budget: 15000, target: 40, mult: 3 };
+            // Posição baseada no ponto clicado + avanço no eixo da normal
+            let pX = intersect.point.x + normal.x * (matDef.w / 2);
+            let pY = intersect.point.y + normal.y * (matDef.h / 2);
+            let pZ = intersect.point.z + normal.z * (matDef.d / 2);
 
-            document.getElementById('target-alt').innerText = config.target;
+            // Snap ao grid nos eixos X e Z para manter alinhamento
+            pX = Math.round(pX / GRID_SNAP) * GRID_SNAP;
+            pZ = Math.round(pZ / GRID_SNAP) * GRID_SNAP;
+
+            // Tratamento especial para o eixo Y (Altura) para encaixe perfeito
+            if (intersect.object === groundPlane) {
+                pY = matDef.h / 2;
+            } else if (normal.y > 0.5) { // Clicou no topo de um bloco
+                pY = intersect.object.position.y + (intersect.object.geometry.parameters.height / 2) + (matDef.h / 2);
+            }
+
+            // Criação do Mesh
+            const geo = new THREE.BoxGeometry(matDef.w, matDef.h, matDef.d);
+            const mat = new THREE.MeshStandardMaterial({ color: matDef.color });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(pX, pY, pZ);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            scene.add(mesh);
+
+            // Objeto lógico de negócio
+            const newBlock = {
+                type: currentTool,
+                w: matDef.w, h: matDef.h, d: matDef.d,
+                vol: matDef.w * matDef.h * matDef.d,
+                mesh: mesh,
+                tension: 0,
+                baseColor: new THREE.Color(matDef.color)
+            };
+
+            blocks.push(newBlock);
+            config.budget -= matDef.cost;
             updateHUD();
-            startTimer();
-            loop();
+
+            if (config.budget < 0) endGame('Seu orçamento estourou!');
         }
 
         /**
-         * MOTOR DE FÍSICA E CÁLCULOS
+         * ==========================================
+         * 4. FÍSICA E REGRAS DE NEGÓCIO
+         * ==========================================
          */
-        function calculateStructuralPhysics() {
+        function calculatePhysics() {
             // Reseta tensões
             blocks.forEach(b => b.tension = 0);
 
-            // Propagação de carga de cima para baixo
-            // Para simplificação em tempo real: ordenamos por Z (altura) descendente
-            let sorted = [...blocks].sort((a,b) => b.z - a.z);
+            // Ordena de cima para baixo (eixo Y)
+            let sorted = [...blocks].sort((a,b) => b.mesh.position.y - a.mesh.position.y);
 
             sorted.forEach(topBlock => {
                 let weight = topBlock.vol * MATERIALS[topBlock.type].density * 9.8;
                 topBlock.tension += weight;
 
-                // Transfere peso para quem está abaixo (contato simples)
                 blocks.forEach(botBlock => {
                     if (topBlock === botBlock) return;
-                    // Checa colisão AABB simples no plano XY e se está logo abaixo
-                    if (Math.abs(topBlock.x - botBlock.x) < (topBlock.w + botBlock.w)/2 &&
-                        Math.abs(topBlock.y - botBlock.y) < (topBlock.d + botBlock.d)/2 &&
-                        Math.abs(topBlock.z - (botBlock.z + botBlock.h)) < 0.1) {
-                        botBlock.tension += topBlock.tension;
+                    
+                    // Verifica se botBlock está imediatamente abaixo e tocando topBlock
+                    const tY = topBlock.mesh.position.y;
+                    const bY = botBlock.mesh.position.y;
+                    const tH = topBlock.h;
+                    const bH = botBlock.h;
+
+                    if (Math.abs((tY - tH/2) - (bY + bH/2)) < 0.1) {
+                        // Verifica AABB em X e Z para ver se há sobreposição
+                        const tx = topBlock.mesh.position.x;
+                        const tz = topBlock.mesh.position.z;
+                        const bx = botBlock.mesh.position.x;
+                        const bz = botBlock.mesh.position.z;
+
+                        if (Math.abs(tx - bx) < (topBlock.w + botBlock.w)/2 - 0.01 &&
+                            Math.abs(tz - bz) < (topBlock.d + botBlock.d)/2 - 0.01) {
+                            botBlock.tension += topBlock.tension;
+                        }
                     }
                 });
             });
 
-            // Verifica colapso
+            // Aplica cor de stress e verifica colapso
+            const dangerColor = new THREE.Color(0xe74c3c);
+
             for (let b of blocks) {
                 let area = b.w * b.d;
                 let pressure = b.tension / area;
-                b.stressRatio = pressure / MATERIALS[b.type].limit;
+                let stressRatio = pressure / MATERIALS[b.type].limit;
 
-                if (b.stressRatio > 1.0) return endGame('A estrutura colapsou devido ao excesso de carga!');
+                // Interpola a cor natural com a cor de perigo
+                b.mesh.material.color.lerpColors(b.baseColor, dangerColor, Math.min(stressRatio, 1));
+
+                if (stressRatio > 1.0) {
+                    endGame('A estrutura colapsou devido ao excesso de carga!');
+                    return;
+                }
             }
-        }
-
-        /**
-         * RENDERIZAÇÃO ISOMÉTRICA
-         */
-        function toScreen(x, y, z) {
-            // O segredo da projeção 2.5D:
-            const scX = (x - y) * Math.cos(isoAngle);
-            const scY = (x + y) * Math.sin(isoAngle) - z;
-            return {
-                x: canvas.width / 2 + scX * gridSize,
-                y: canvas.height * 0.8 + scY * gridSize
-            };
-        }
-
-        function drawBlock(b) {
-            const mat = MATERIALS[b.type];
-            // Cor baseada no stress (Verde -> Vermelho)
-            const r = Math.floor(255 * b.stressRatio);
-            const g = Math.floor(255 * (1 - b.stressRatio));
-            const color = `rgb(${r},${g},50)`;
-
-            const points = [
-                toScreen(b.x - b.w/2, b.y - b.d/2, b.z),
-                toScreen(b.x + b.w/2, b.y - b.d/2, b.z),
-                toScreen(b.x + b.w/2, b.y + b.d/2, b.z),
-                toScreen(b.x - b.w/2, b.y + b.d/2, b.z),
-                toScreen(b.x - b.w/2, b.y - b.d/2, b.z + b.h),
-                toScreen(b.x + b.w/2, b.y - b.d/2, b.z + b.h),
-                toScreen(b.x + b.w/2, b.y + b.d/2, b.z + b.h),
-                toScreen(b.x - b.w/2, b.y + b.d/2, b.z + b.h)
-            ];
-
-            const drawFace = (pIdx, fColor) => {
-                ctx.beginPath();
-                ctx.fillStyle = fColor;
-                ctx.moveTo(points[pIdx[0]].x, points[pIdx[0]].y);
-                pIdx.forEach(i => ctx.lineTo(points[i].x, points[i].y));
-                ctx.closePath();
-                ctx.fill();
-                ctx.stroke();
-            };
-
-            ctx.strokeStyle = "rgba(0,0,0,0.2)";
-            drawFace([0,1,5,4], color); // Leste
-            drawFace([1,2,6,5], color); // Sul
-            drawFace([4,5,6,7], color); // Topo
-        }
-
-        /**
-         * LÓGICA DE JOGO
-         */
-        function loop() {
-            if (gameState !== 'playing') return;
-
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Desenha Chão/Grid
-            ctx.beginPath();
-            ctx.strokeStyle = "#444";
-            for(let i=-5; i<=5; i++) {
-                let p1 = toScreen(i, -5, 0); let p2 = toScreen(i, 5, 0);
-                ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
-                p1 = toScreen(-5, i, 0); p2 = toScreen(5, i, 0);
-                ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
-            }
-            ctx.stroke();
-
-            // Ordena blocos para o "Painter's Algorithm" (quem tá atrás/baixo desenha primeiro)
-            blocks.sort((a,b) => (a.z - b.z) || (a.x + a.y) - (b.x + b.y));
-            blocks.forEach(drawBlock);
-
-            calculateStructuralPhysics();
-            checkWinCondition();
-
-            requestAnimationFrame(loop);
         }
 
         function checkWinCondition() {
-            let maxH = blocks.reduce((max, b) => Math.max(max, b.z + b.h), 0);
-            document.getElementById('txt-alt').innerText = maxH.toFixed(1);
+            if (blocks.length === 0) return;
+
+            // 1. Calcula Altura Máxima (Topo do bloco mais alto)
+            let maxH = blocks.reduce((max, b) => Math.max(max, b.mesh.position.y + b.h/2), 0);
             
-            if (maxH >= config.target) {
-                endGame('Objetivo de altura alcançado!', true);
+            // 2. Calcula Área da Base (Footprint)
+            // Consideramos peças "na base" aquelas cujo fundo toca o chão (Y - H/2 <= 0.1)
+            let baseArea = blocks
+                .filter(b => (b.mesh.position.y - b.h/2) <= 0.1)
+                .reduce((sum, b) => sum + (b.w * b.d), 0);
+
+            document.getElementById('txt-alt').innerText = maxH.toFixed(1);
+            document.getElementById('txt-area').innerText = baseArea.toFixed(1);
+            
+            if (maxH >= config.targetAlt && baseArea >= config.targetArea) {
+                endGame('Objetivos de Altura e Área alcançados!', true);
             }
+        }
+
+        /**
+         * ==========================================
+         * 5. LÓGICA DE INTERFACE E ESTADO
+         * ==========================================
+         */
+        function startGame(difficulty) {
+            document.getElementById('screen-start').style.display = 'none';
+            gameState = 'playing';
+            
+            if(difficulty === 'easy') config = { budget: 50000, targetAlt: 10, targetArea: 4, mult: 1 };
+            if(difficulty === 'medium') config = { budget: 30000, targetAlt: 20, targetArea: 10, mult: 2 };
+            if(difficulty === 'hard') config = { budget: 15000, targetAlt: 40, targetArea: 20, mult: 3 };
+
+            document.getElementById('target-alt').innerText = config.targetAlt;
+            document.getElementById('target-area').innerText = config.targetArea;
+            
+            updateHUD();
+            startTimer();
+            animate();
+        }
+
+        function setTool(tool) {
+            currentTool = tool;
+            document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function updateHUD() {
+            document.getElementById('txt-budget').innerText = config.budget;
         }
 
         function startTimer() {
@@ -301,66 +420,6 @@
             }, 1000);
         }
 
-        /**
-         * INPUT E CONSTRUÇÃO
-         */
-        canvas.addEventListener('mousedown', (e) => {
-            if (gameState !== 'playing') return;
-
-            // Simplificação de Raycasting para Grid Isométrico:
-            // Convertemos o clique de volta para coordenadas de mundo aproximadas
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left - canvas.width/2;
-            const mouseY = e.clientY - rect.top - canvas.height*0.8;
-
-            // Inversa da projeção (Z considerado 0 para o clique inicial ou baseado no topo)
-            let currZ = findTopAt(0, 0); // Simplificado para centro
-            
-            // Para este protótipo, vamos permitir construir empilhado no centro ou adjacente
-            const mat = MATERIALS[currentTool];
-            
-            if (config.budget < mat.cost) return;
-
-            // Lógica de posicionamento (empilhamento automático)
-            let spawnZ = 0;
-            blocks.forEach(b => {
-                if (b.z + b.h > spawnZ) spawnZ = b.z + b.h;
-            });
-
-            const newBlock = {
-                type: currentTool,
-                x: 0, y: 0, z: spawnZ,
-                w: mat.w, h: mat.h, d: mat.d,
-                vol: mat.w * mat.h * mat.d,
-                stressRatio: 0, tension: 0
-            };
-
-            blocks.push(newBlock);
-            config.budget -= mat.cost;
-            updateHUD();
-
-            if (config.budget < 0) endGame('Seu orçamento estourou!');
-        });
-
-        function findTopAt(x, y) {
-            let top = 0;
-            blocks.forEach(b => { if(b.z + b.h > top) top = b.z + b.h; });
-            return top;
-        }
-
-        function setTool(tool) {
-            currentTool = tool;
-            document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
-        }
-
-        function updateHUD() {
-            document.getElementById('txt-budget').innerText = config.budget;
-        }
-
-        /**
-         * RANKING E FINALIZAÇÃO
-         */
         function endGame(msg, win = false) {
             gameState = 'end';
             document.getElementById('screen-gameover').style.display = 'flex';
@@ -369,9 +428,6 @@
             document.getElementById('end-msg').innerText = msg;
 
             if (win) {
-                /** * FÓRMULA DE PONTUAÇÃO:
-                 * (Grana que sobrou + (tempo restante * 10)) * Dificuldade
-                 */
                 let score = Math.floor((config.budget + (timeLeft * 10)) * config.mult);
                 document.getElementById('final-score').innerText = score;
                 document.getElementById('win-section').style.display = 'block';
@@ -380,7 +436,7 @@
         }
 
         function saveScore() {
-            const name = document.getElementById('player-name').value.toUpperCase() || 'ANON';
+            const name = document.getElementById('player-name').value.toUpperCase() || 'ANO';
             const score = parseInt(document.getElementById('final-score').innerText);
             let ranking = JSON.parse(localStorage.getItem('isometric_rank') || '[]');
             
@@ -402,6 +458,28 @@
             html += '</table>';
             document.getElementById('ranking-container').innerHTML = html;
         }
+
+        /**
+         * ==========================================
+         * 6. LOOP DE RENDERIZAÇÃO
+         * ==========================================
+         */
+        function animate() {
+            if (gameState !== 'playing') return;
+            requestAnimationFrame(animate);
+
+            controls.update(); // Necessário por conta do enableDamping
+            
+            if (blocks.length > 0) {
+                calculatePhysics();
+                checkWinCondition();
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Renderização estática inicial para a tela de Start
+        renderer.render(scene, camera);
 
     </script>
 </body>
