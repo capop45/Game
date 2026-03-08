@@ -22,6 +22,7 @@
             --cell-selected: #b6d4fe;
             --cell-highlight: #e7f1ff;
             --draft-color: #6c757d;
+            --completed-bg: #d1e7dd;
             --modal-bg: rgba(0, 0, 0, 0.5);
             --font-main: 'Segoe UI', system-ui, sans-serif;
             --transition: 0.2s ease-in-out;
@@ -44,6 +45,7 @@
             --cell-selected: #0d47a1;
             --cell-highlight: #1a293b;
             --draft-color: #adb5bd;
+            --completed-bg: #14452f;
             --modal-bg: rgba(0, 0, 0, 0.8);
         }
 
@@ -194,7 +196,7 @@
             font-weight: 500;
             cursor: pointer;
             position: relative;
-            transition: background-color 0.1s;
+            transition: background-color 0.2s ease;
         }
 
         /* 3x3 Grid Separation */
@@ -212,8 +214,22 @@
             cursor: default;
         }
 
+        /* Highlight para grupos já completos */
+        .cell.completed {
+            background-color: var(--completed-bg);
+        }
+        
+        /* Mix de cores caso seja fixa ou selecionada enquanto está completa */
+        .cell.fixed.completed {
+            background-color: color-mix(in srgb, var(--fixed-bg) 50%, var(--completed-bg) 50%);
+        }
+
         .cell.highlight {
             background-color: var(--cell-highlight);
+        }
+        
+        .cell.completed.highlight {
+            background-color: color-mix(in srgb, var(--completed-bg) 70%, var(--cell-highlight) 30%);
         }
 
         .cell.fixed.highlight {
@@ -261,6 +277,12 @@
             padding: 1rem 0;
             font-size: 1.2rem;
             font-weight: bold;
+        }
+
+        .numpad button:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            background-color: var(--fixed-bg);
         }
 
         .numpad .btn-erase {
@@ -453,12 +475,11 @@
                 return true;
             }
 
-            // Apenas verifica se a inserção atual quebra regras com o estado atual da grade
             isMoveValid(grid, row, col, num) {
                 const temp = grid[row][col];
-                grid[row][col] = 0; // Remove temporariamente para testar
+                grid[row][col] = 0; 
                 const valid = this.isValid(grid, row, col, num);
-                grid[row][col] = temp; // Restaura
+                grid[row][col] = temp; 
                 return valid;
             }
 
@@ -491,7 +512,6 @@
 
             generate(difficulty) {
                 const solution = this.createEmpty();
-                // Preenche diagonal principal para aleatoriedade rápida
                 for(let i = 0; i < 9; i+=3) {
                     const nums = this.shuffle([1,2,3,4,5,6,7,8,9]);
                     for(let r=0; r<3; r++) {
@@ -525,7 +545,7 @@
                 this.displayEl = displayEl;
                 this.onZeroCallback = onZeroCallback;
                 this.interval = null;
-                this.secondsLeft = 3600; // 60 minutes
+                this.secondsLeft = 3600; 
             }
 
             start() {
@@ -613,8 +633,8 @@
             saveScore(name, difficulty, score, timeStr) {
                 const scores = this.getScores();
                 scores.push({ name: name || 'Anônimo', difficulty, score, time: timeStr, date: Date.now() });
-                scores.sort((a, b) => b.score - a.score); // Descending by score
-                scores.splice(10); // Keep top 10
+                scores.sort((a, b) => b.score - a.score); 
+                scores.splice(10); 
                 localStorage.setItem(this.key, JSON.stringify(scores));
             }
         }
@@ -733,6 +753,7 @@
                 this.scoreManager.reset();
                 this.timer.start();
                 this.renderBoard();
+                this.updateNumpadState();
             }
 
             renderBoard() {
@@ -768,13 +789,12 @@
                 this.selectedCell = { r, c };
                 this.cells[r][c].el.classList.add('selected');
                 this.highlightRelatives(r, c);
+                this.updateNumpadState();
             }
 
             highlightRelatives(r, c) {
-                // Remove antigas
                 this.cells.forEach(row => row.forEach(cell => cell.el.classList.remove('highlight')));
                 
-                // Aplica novas (linha, coluna, quadrante)
                 const boxR = Math.floor(r / 3) * 3;
                 const boxC = Math.floor(c / 3) * 3;
 
@@ -798,6 +818,51 @@
                 this.selectCell(r, c);
             }
 
+            // NOVA FUNÇÃO: Verifica se o número já existe na mesma linha, coluna ou quadrado
+            isNumberBlocked(r, c, num) {
+                if (num === 0) return false;
+                const boxR = Math.floor(r / 3) * 3;
+                const boxC = Math.floor(c / 3) * 3;
+                
+                for (let i = 0; i < 9; i++) {
+                    if (i !== c && this.cells[r][i].val === num) return true;
+                    if (i !== r && this.cells[i][c].val === num) return true;
+                    
+                    const br = boxR + Math.floor(i / 3);
+                    const bc = boxC + (i % 3);
+                    if ((br !== r || bc !== c) && this.cells[br][bc].val === num) return true;
+                }
+                return false;
+            }
+
+            // NOVA FUNÇÃO: Atualiza os botões bloqueados
+            updateNumpadState() {
+                if (!this.selectedCell) {
+                    document.querySelectorAll('#numpad button:not(.btn-erase)').forEach(btn => btn.disabled = false);
+                    return;
+                }
+                const { r, c } = this.selectedCell;
+                document.querySelectorAll('#numpad button:not(.btn-erase)').forEach(btn => {
+                    const val = parseInt(btn.dataset.val);
+                    btn.disabled = this.isNumberBlocked(r, c, val);
+                });
+            }
+
+            // NOVA FUNÇÃO: Limpa rascunhos inúteis da linha, coluna e quadrado
+            eraseDraftsInHouse(row, col, num) {
+                const boxR = Math.floor(row / 3) * 3;
+                const boxC = Math.floor(col / 3) * 3;
+                
+                for (let i = 0; i < 9; i++) {
+                    if (this.cells[row][i].drafts.has(num)) this.cells[row][i].drafts.delete(num);
+                    if (this.cells[i][col].drafts.has(num)) this.cells[i][col].drafts.delete(num);
+                    
+                    const br = boxR + Math.floor(i / 3);
+                    const bc = boxC + (i % 3);
+                    if (this.cells[br][bc].drafts.has(num)) this.cells[br][bc].drafts.delete(num);
+                }
+            }
+
             handleInput(num) {
                 if (!this.selectedCell) return;
                 const { r, c } = this.selectedCell;
@@ -810,30 +875,68 @@
                     cell.val = 0;
                     cell.drafts.clear();
                     cell.el.classList.remove('error');
-                } else if (this.isPencilMode) {
-                    // Lápis (Draft)
-                    cell.val = 0;
-                    if (cell.drafts.has(num)) cell.drafts.delete(num);
-                    else cell.drafts.add(num);
                 } else {
-                    // Caneta (Valor real)
-                    cell.val = num;
-                    cell.drafts.clear(); 
-                    
-                    // Valida regra básica para feedback visual e pontuação
-                    const currentGrid = this.cells.map(row => row.map(c => c.val));
-                    const isValid = this.engine.isMoveValid(currentGrid, r, c, num);
-                    
-                    if (!isValid) {
-                        this.scoreManager.addPoints(false, this.currentDifficulty);
+                    // Impede o uso se a regra de bloqueio for verdadeira (proteção para teclado físico)
+                    if (this.isNumberBlocked(r, c, num)) return;
+
+                    if (this.isPencilMode) {
+                        cell.val = 0;
+                        if (cell.drafts.has(num)) cell.drafts.delete(num);
+                        else cell.drafts.add(num);
                     } else {
-                        this.scoreManager.addPoints(true, this.currentDifficulty);
+                        // Caneta
+                        cell.val = num;
+                        cell.drafts.clear(); 
+                        
+                        const currentGrid = this.cells.map(row => row.map(c => c.val));
+                        const isValid = this.engine.isMoveValid(currentGrid, r, c, num);
+                        
+                        if (!isValid) {
+                            this.scoreManager.addPoints(false, this.currentDifficulty);
+                        } else {
+                            this.scoreManager.addPoints(true, this.currentDifficulty);
+                            // Chama a limpeza automática de rascunhos para facilitar a vida do jogador
+                            this.eraseDraftsInHouse(r, c, num);
+                        }
                     }
                 }
 
                 this.updateBoardUI();
                 if (num !== 0 && !this.isPencilMode) {
                     this.checkWinCondition();
+                }
+            }
+
+            // NOVA FUNÇÃO: Avalia grupos para marcá-los como completos (linha, coluna ou quadrado)
+            checkCompletedAreas() {
+                // Remove destaques anteriores
+                this.cells.forEach(row => row.forEach(c => c.el.classList.remove('completed')));
+
+                const isGroupComplete = (group) => {
+                    const vals = group.map(c => c.val).filter(v => v !== 0);
+                    const hasErrors = group.some(c => c.el.classList.contains('error'));
+                    // Valida se o grupo tem todos os 9 números distintos e sem classes de erro
+                    return vals.length === 9 && new Set(vals).size === 9 && !hasErrors;
+                };
+
+                // Checa linhas e colunas
+                for (let i = 0; i < 9; i++) {
+                    const row = this.cells[i];
+                    if (isGroupComplete(row)) row.forEach(c => c.el.classList.add('completed'));
+
+                    const col = this.cells.map(r => r[i]);
+                    if (isGroupComplete(col)) col.forEach(c => c.el.classList.add('completed'));
+                }
+
+                // Checa quadrados 3x3
+                for (let br = 0; br < 3; br++) {
+                    for (let bc = 0; bc < 3; bc++) {
+                        const box = [];
+                        for (let i = 0; i < 9; i++) {
+                            box.push(this.cells[br * 3 + Math.floor(i / 3)][bc * 3 + (i % 3)]);
+                        }
+                        if (isGroupComplete(box)) box.forEach(c => c.el.classList.add('completed'));
+                    }
                 }
             }
 
@@ -847,7 +950,6 @@
 
                         if (cell.val !== 0) {
                             cell.el.textContent = cell.val;
-                            // Reavalia o estado de erro dinamicamente para todas as células alteráveis
                             if (!cell.isFixed) {
                                 if (!this.engine.isMoveValid(currentGrid, r, c, cell.val)) {
                                     cell.el.classList.add('error');
@@ -858,7 +960,6 @@
                         } else {
                             cell.el.classList.remove('error');
                             if (cell.drafts.size > 0) {
-                                // Renderiza grid 3x3 de rascunhos
                                 const draftGrid = document.createElement('div');
                                 draftGrid.className = 'draft-grid';
                                 for (let i = 1; i <= 9; i++) {
@@ -872,6 +973,10 @@
                         }
                     }
                 }
+
+                // Atualiza áreas completas e o teclado numérico após as mudanças visuais do tabuleiro
+                this.checkCompletedAreas();
+                this.updateNumpadState();
             }
 
             checkWinCondition() {
@@ -886,7 +991,6 @@
                     }
                 }
 
-                // O jogo é vencido se todas as células estão preenchidas e não há erros nas regras
                 if (complete && !hasErrors) {
                     this.handleVictory();
                 }
