@@ -1,1 +1,857 @@
-a
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Civil Master 3D - V2.0 Paramétrico</title>
+    <style>
+        :root {
+            --primary: #0f172a;
+            --secondary: #1e293b;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --danger: #ef4444;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --ui-bg: rgba(30, 41, 59, 0.85);
+            --ui-border: rgba(255, 255, 255, 0.1);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background: var(--primary);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            color: var(--text-main); user-select: none;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        canvas { display: block; touch-action: none; outline: none; }
+
+        /* HUD Superior */
+        #hud {
+            position: absolute; top: 15px; left: 15px; right: 15px;
+            display: flex; justify-content: space-between; align-items: flex-start;
+            pointer-events: none; z-index: 10;
+        }
+
+        .stat-panel {
+            background: var(--ui-bg); backdrop-filter: blur(10px);
+            padding: 15px 20px; border-radius: 12px;
+            border: 1px solid var(--ui-border);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex; flex-direction: column; gap: 8px;
+        }
+
+        .stat-row {
+            display: flex; justify-content: space-between; gap: 15px;
+            font-size: 0.95rem; font-weight: 500;
+        }
+
+        .stat-value { font-family: monospace; font-size: 1.1rem; color: var(--accent); }
+        .stat-target { color: var(--text-muted); font-size: 0.85rem; }
+
+        #timer-panel {
+            font-size: 1.75rem; font-weight: 700; font-family: monospace;
+            text-align: center; min-width: 100px;
+            transition: color 0.3s ease;
+        }
+
+        .critical-time { color: var(--danger) !important; animation: pulse 1s infinite; }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        /* Barra de Ferramentas Inferior */
+        #toolbar {
+            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 12px; background: var(--ui-bg);
+            padding: 12px; border-radius: 16px; border: 1px solid var(--ui-border);
+            backdrop-filter: blur(10px); pointer-events: auto; z-index: 10;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+
+        .btn-tool {
+            background: var(--secondary); border: 1px solid transparent;
+            padding: 12px 24px; color: var(--text-main); border-radius: 10px;
+            cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-weight: 600; font-size: 0.9rem; text-transform: uppercase;
+            letter-spacing: 0.5px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+        }
+
+        .btn-tool:hover { background: #334155; }
+        .btn-tool.active {
+            background: var(--accent); border-color: var(--accent-hover);
+            transform: translateY(-4px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        /* Painel Paramétrico */
+        #param-panel {
+            position: absolute; right: 20px; top: 100px;
+            background: var(--ui-bg); backdrop-filter: blur(10px);
+            padding: 20px; border-radius: 12px; border: 1px solid var(--ui-border);
+            display: flex; flex-direction: column; gap: 12px;
+            width: 240px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); z-index: 10;
+        }
+
+        #param-panel h3 {
+            margin: 0 0 10px 0; font-size: 1.1rem; color: var(--text-main);
+            border-bottom: 1px solid var(--ui-border); padding-bottom: 8px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        .input-group {
+            display: flex; justify-content: space-between; align-items: center;
+            background: rgba(0,0,0,0.2); padding: 8px 12px; border-radius: 8px;
+        }
+
+        .input-group label { font-size: 0.85rem; color: var(--text-muted); font-weight: 500; }
+        .input-group input {
+            width: 70px; padding: 6px; background: var(--secondary);
+            border: 1px solid var(--ui-border); border-radius: 6px;
+            text-align: right; font-family: monospace; font-size: 1rem; color: var(--text-main);
+            outline: none; transition: border-color 0.2s;
+        }
+        .input-group input:focus { border-color: var(--accent); }
+
+        #dynamic-cost {
+            margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--ui-border);
+            display: flex; justify-content: space-between; font-weight: 600;
+        }
+        #val-cost { color: var(--success); font-family: monospace; font-size: 1.1rem; }
+
+        .hint-text { font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-top: 10px; }
+
+        #help-tip {
+            position: absolute; top: 90px; left: 50%; transform: translateX(-50%);
+            background: var(--warning); color: #000; padding: 8px 20px; border-radius: 20px;
+            font-weight: 700; font-size: 0.9rem; pointer-events: none;
+            opacity: 0; transition: opacity 0.3s, transform 0.3s;
+            z-index: 20; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+        }
+
+        /* Overlays e Modais */
+        .overlay {
+            position: fixed; inset: 0; background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(8px); display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; opacity: 1; transition: opacity 0.4s;
+        }
+
+        .card {
+            background: var(--secondary); padding: 40px; border-radius: 20px;
+            width: 90%; max-width: 500px; text-align: center;
+            border: 1px solid var(--ui-border); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .card h2 { margin-top: 0; font-size: 2rem; background: linear-gradient(to right, var(--accent), #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .card p { color: var(--text-muted); margin-bottom: 30px; line-height: 1.6; }
+
+        .btn-main {
+            display: block; width: 100%; padding: 16px; margin-bottom: 12px;
+            border: none; border-radius: 10px; font-size: 1.1rem; font-weight: 700;
+            cursor: pointer; transition: transform 0.2s, filter 0.2s; color: white;
+        }
+        .btn-main:hover { transform: translateY(-2px); filter: brightness(1.1); }
+        .btn-easy { background: var(--success); }
+        .btn-medium { background: var(--warning); }
+        .btn-hard { background: var(--danger); }
+
+        /* Tabela de Ranking */
+        input[type="text"] {
+            background: rgba(0,0,0,0.3); border: 1px solid var(--ui-border);
+            padding: 12px; font-size: 1.5rem; width: 120px; text-align: center;
+            text-transform: uppercase; margin: 20px 0; border-radius: 8px; color: white; outline: none;
+        }
+        input[type="text"]:focus { border-color: var(--accent); }
+
+        .ranking-table { width: 100%; margin: 25px 0; border-collapse: collapse; font-size: 0.95rem; }
+        .ranking-table th { padding: 12px 8px; border-bottom: 2px solid var(--ui-border); color: var(--text-muted); text-align: left; }
+        .ranking-table td { padding: 12px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); font-weight: 500; }
+        .ranking-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+        @media (max-width: 768px) {
+            #toolbar { width: 95%; overflow-x: auto; justify-content: flex-start; padding: 10px; border-radius: 12px; }
+            .btn-tool { padding: 10px 16px; font-size: 0.8rem; }
+            #param-panel { top: auto; bottom: 90px; right: 50%; transform: translateX(50%); width: 90%; flex-direction: row; flex-wrap: wrap; padding: 15px; }
+            #param-panel h3 { width: 100%; margin-bottom: 5px; }
+            .input-group { flex: 1; min-width: 45%; }
+            #dynamic-cost { width: 100%; margin-top: 5px; padding-top: 10px; }
+            .hint-text { display: none; }
+            .stat-panel { padding: 10px; }
+            .stat-row { font-size: 0.85rem; }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="hud">
+        <div class="stat-panel">
+            <div class="stat-row">
+                <span>Altura Atual:</span>
+                <div><span class="stat-value" id="txt-alt">0.0</span> <span class="stat-target">/ <span id="target-alt">0</span>m</span></div>
+            </div>
+            <div class="stat-row">
+                <span>Área da Base:</span>
+                <div><span class="stat-value" id="txt-area">0.0</span> <span class="stat-target">/ <span id="target-area">0</span>m²</span></div>
+            </div>
+            <div class="stat-row" style="margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--ui-border);">
+                <span>Orçamento:</span>
+                <span class="stat-value" style="color: var(--success);">R$ <span id="txt-budget">0</span></span>
+            </div>
+        </div>
+        <div class="stat-panel" id="timer-panel">60:00</div>
+    </div>
+
+    <div id="help-tip">Modo Edição: Clique no ponto final (ESC para cancelar)</div>
+
+    <div id="toolbar">
+        <button class="btn-tool active" onclick="setTool('pilar')"><span>Pilar</span></button>
+        <button class="btn-tool" onclick="setTool('viga')"><span>Viga</span></button>
+        <button class="btn-tool" onclick="setTool('parede')"><span>Parede</span></button>
+        <button class="btn-tool" onclick="setTool('laje')"><span>Laje</span></button> </div>
+
+    <div id="param-panel">
+        <h3>Propriedades (<span id="current-tool-label" style="color: var(--accent);">PILAR</span>)</h3>
+        <div class="input-group">
+            <label for="param-w" id="lbl-w">Base X (m):</label>
+            <input type="number" id="param-w" value="0.4" step="0.1" min="0.1">
+        </div>
+        <div class="input-group" id="group-depth">
+            <label for="param-d" id="lbl-d">Base Z (m):</label>
+            <input type="number" id="param-d" value="0.4" step="0.1" min="0.1">
+        </div>
+        <div class="input-group" id="group-height">
+            <label for="param-h" id="lbl-h">Altura Y (m):</label>
+            <input type="number" id="param-h" value="3.0" step="0.5" min="0.1">
+        </div>
+        <div id="dynamic-cost">
+            <span>Custo Est.:</span>
+            <span>R$ <span id="val-cost">0</span></span>
+        </div>
+        <div class="hint-text">Aperte 'R' ou toque duplo para rotacionar 90°</div>
+    </div>
+
+    <div id="screen-start" class="overlay">
+        <div class="card">
+            <h2>CIVIL MASTER 3D</h2>
+            <p>Projete e construa estruturas em concreto armado. Otimize os materiais, garanta a estabilidade física e não exceda a tensão máxima admissível.</p>
+            <button class="btn-main btn-easy" onclick="startGame('easy')">FÁCIL (10m Alt. / 4m² Base)</button>
+            <button class="btn-main btn-medium" onclick="startGame('medium')">MÉDIO (20m Alt. / 10m² Base)</button>
+            <button class="btn-main btn-hard" onclick="startGame('hard')">DIFÍCIL (40m Alt. / 20m² Base)</button>
+        </div>
+    </div>
+
+    <div id="screen-gameover" class="overlay" style="display: none;">
+        <div class="card">
+            <h2 id="end-title">ANÁLISE ESTRUTURAL</h2>
+            <p id="end-msg"></p>
+            
+            <div id="win-section" style="display:none">
+                <h3 style="color: var(--text-main);">Eficiência do Projeto: <span id="final-score" style="color: var(--accent);">0</span> pts</h3>
+                <input type="text" id="player-name" maxlength="3" placeholder="ENG">
+                <button class="btn-main btn-easy" onclick="saveScore()">Registrar ART (Salvar Ranking)</button>
+            </div>
+            
+            <div id="ranking-container"></div>
+            <button class="btn-main" onclick="location.reload()" style="background: var(--secondary); margin-top: 15px; border: 1px solid var(--ui-border);">Novo Projeto</button>
+        </div>
+    </div>
+<script>
+/**
+ * ==========================================
+ * 1. CONFIGURAÇÕES E ESTADO DO MOTOR FÍSICO
+ * ==========================================
+ */
+let gameState = 'start';
+let config = { budget: 0, targetAlt: 0, targetArea: 0, mult: 1 };
+let timeLeft = 3600;
+let blocks = []; // Array que armazenará todas as peças estruturais
+let currentTool = 'pilar';
+
+// Resolução do Grid Magnético (Snap) - Precisão tipo "Revit"
+const GRID_SNAP = 0.1; // 10cm de precisão
+let drawState = 0; // 0: Idle (solto), 1: Desenhando (esticando)
+let pointA = new THREE.Vector3(); // Ponto de ancoragem inicial
+let currentRotationY = 0;
+
+/**
+ * Propriedades Físicas dos Materiais (Betão Armado / Concreto)
+ * costPerM3: R$ por metro cúbico
+ * density: kg/m³ (Betão armado ~2500 kg/m³)
+ * limit: Resistência Máxima à Compressão em Pascal (Pa). Ex: 25 MPa = 25.000.000 Pa
+ */
+const MATERIALS = {
+    pilar:  { costPerM3: 3125, density: 2500, limit: 25000000, color: 0x3b82f6 }, // Pilar suporta mais carga
+    viga:   { costPerM3: 2000, density: 2500, limit: 15000000, color: 0x64748b }, // Viga falha antes ao cisalhamento
+    parede: { costPerM3: 1500, density: 1800, limit: 10000000, color: 0xf59e0b }, // Alvenaria estrutural leve
+    laje:   { costPerM3: 2500, density: 2500, limit: 12000000, color: 0x10b981 }  // Nova Entidade: Laje
+};
+
+/**
+ * ==========================================
+ * 2. SETUP DO AMBIENTE 3D (THREE.JS)
+ * ==========================================
+ */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0f172a); // Fundo escuro moderno
+scene.fog = new THREE.FogExp2(0x0f172a, 0.015); // Profundidade visual
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(20, 20, 25);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Sombras mais suaves
+document.body.appendChild(renderer.domElement);
+
+// Controles de Câmera (Orbit)
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.maxPolarAngle = Math.PI / 2 - 0.02; // Não deixa a câmera ir abaixo do chão
+controls.minDistance = 5;
+controls.maxDistance = 100;
+
+// Iluminação Realista
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(30, 50, 20);
+dirLight.castShadow = true;
+dirLight.shadow.mapSize.width = 2048;
+dirLight.shadow.mapSize.height = 2048;
+dirLight.shadow.camera.left = -30;
+dirLight.shadow.camera.right = 30;
+dirLight.shadow.camera.top = 30;
+dirLight.shadow.camera.bottom = -30;
+dirLight.shadow.bias = -0.0005;
+scene.add(dirLight);
+
+// Malha Base (Terreno/Grelha)
+const gridHelper = new THREE.GridHelper(50, 50, 0x334155, 0x1e293b);
+gridHelper.position.y = 0.01;
+scene.add(gridHelper);
+
+const groundGeo = new THREE.PlaneGeometry(50, 50);
+const groundMat = new THREE.MeshStandardMaterial({ 
+    color: 0x0f172a, 
+    roughness: 0.8, 
+    metalness: 0.2,
+    depthWrite: false 
+});
+const groundPlane = new THREE.Mesh(groundGeo, groundMat);
+groundPlane.rotation.x = -Math.PI / 2;
+groundPlane.receiveShadow = true;
+scene.add(groundPlane);
+
+// Holograma de Construção (Ghost Object)
+const ghostMaterial = new THREE.MeshBasicMaterial({ 
+    color: 0x3b82f6, transparent: true, opacity: 0.5, depthWrite: false, wireframe: false
+});
+let ghostMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), ghostMaterial);
+scene.add(ghostMesh);
+
+// Responsividade do Canvas
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/**
+ * ==========================================
+ * 3. INTERFACE E PARAMETRIZAÇÃO DAS PEÇAS
+ * ==========================================
+ */
+function getParams() {
+    const w = parseFloat(document.getElementById('param-w').value) || 0.4;
+    const h = parseFloat(document.getElementById('param-h').value) || 3.0;
+    let d = parseFloat(document.getElementById('param-d').value) || 0.4;
+    
+    // Se não for pilar nem laje (modo idle), d assume w (perfil quadrado)
+    if (currentTool !== 'pilar' && currentTool !== 'laje' && drawState === 0) {
+        d = w; 
+    }
+    return { w, h, d };
+}
+
+function updateEstimatedCost(vol) {
+    const baseCost = MATERIALS[currentTool].costPerM3;
+    const totalCost = Math.round(vol * baseCost);
+    document.getElementById('val-cost').innerText = totalCost.toLocaleString('pt-BR');
+    
+    // Feedback visual holográfico financeiro
+    if (config.budget >= totalCost) {
+        ghostMaterial.color.setHex(MATERIALS[currentTool].color);
+        ghostMaterial.opacity = 0.6;
+    } else {
+        ghostMaterial.color.setHex(0xef4444); // Vermelho (Sem saldo)
+        ghostMaterial.opacity = 0.3;
+    }
+    return totalCost;
+}
+
+function setTool(tool) {
+    if (drawState === 1) cancelDrawing();
+    currentTool = tool;
+    
+    document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    document.getElementById('current-tool-label').innerText = tool.toUpperCase();
+    
+    // Ajusta a UI de propriedades conforme a engenharia da peça
+    const groupDepth = document.getElementById('group-depth');
+    const groupHeight = document.getElementById('group-height');
+    const lblW = document.getElementById('lbl-w');
+    
+    if (tool === 'pilar') {
+        groupDepth.style.display = 'flex';
+        groupHeight.style.display = 'flex';
+        lblW.innerText = 'Base X (m):';
+        document.getElementById('param-w').value = 0.4;
+        document.getElementById('param-d').value = 0.4;
+        document.getElementById('param-h').value = 3.0;
+    } else if (tool === 'viga') {
+        groupDepth.style.display = 'none';
+        groupHeight.style.display = 'flex';
+        lblW.innerText = 'Largura (m):';
+        document.getElementById('param-w').value = 0.3;
+        document.getElementById('param-h').value = 0.5;
+    } else if (tool === 'parede') {
+        groupDepth.style.display = 'none';
+        groupHeight.style.display = 'flex';
+        lblW.innerText = 'Espessura (m):';
+        document.getElementById('param-w').value = 0.2;
+        document.getElementById('param-h').value = 3.0;
+    } else if (tool === 'laje') { // Novo elemento estrutural
+        groupDepth.style.display = 'flex';
+        groupHeight.style.display = 'none'; // Altura é tratada como espessura fixa na UI para simplificar o drag
+        lblW.innerText = 'Largura (m):';
+        document.getElementById('param-w').value = 4.0;
+        document.getElementById('param-d').value = 4.0;
+        document.getElementById('param-h').value = 0.2; // Espessura padrão da laje
+    }
+    currentRotationY = 0;
+}
+
+/**
+ * ==========================================
+ * 4. RAYCASTING E HIBRIDIZAÇÃO DE MODELAGEM
+ * ==========================================
+ */
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let isDraggingCamera = false;
+let pointerDownPos = { x: 0, y: 0 };
+let doubleTapTimer = 0;
+
+window.addEventListener('pointerdown', (e) => {
+    if (gameState !== 'playing' || e.target.tagName !== 'CANVAS') return;
+    pointerDownPos = { x: e.clientX, y: e.clientY };
+    isDraggingCamera = false;
+});
+
+window.addEventListener('pointermove', (e) => {
+    if (gameState !== 'playing' || e.target.tagName !== 'CANVAS') return;
+    
+    // Diferencia arrasto de câmera de clique de construção
+    if (Math.abs(e.clientX - pointerDownPos.x) > 5 || Math.abs(e.clientY - pointerDownPos.y) > 5) {
+        isDraggingCamera = true;
+    }
+
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+
+    // Considera todos os blocos já construídos e o chão para colisão
+    const targets = blocks.map(b => b.mesh).concat(groundPlane);
+    const intersects = raycaster.intersectObjects(targets);
+
+    if (intersects.length > 0) {
+        const intersect = intersects[0];
+        const normal = intersect.face.normal;
+
+        // "Magnetic Snap" inteligente - Arredonda para a grelha de 0.1m
+        let snapX = Math.round((intersect.point.x + normal.x * 0.05) / GRID_SNAP) * GRID_SNAP;
+        let snapZ = Math.round((intersect.point.z + normal.z * 0.05) / GRID_SNAP) * GRID_SNAP;
+        
+        const params = getParams();
+        
+        // Empilhamento automático (Z-fighting prevention & stack on top)
+        let posY = params.h / 2; 
+        if (intersect.object !== groundPlane) {
+            // Se clicou em cima de uma peça, sobe a altura
+            if (normal.y > 0.5) { 
+                posY = intersect.object.position.y + (intersect.object.geometry.parameters.height / 2) + (params.h / 2);
+            } else {
+                posY = intersect.object.position.y; // Alinha pelas laterais
+            }
+        }
+
+        if (drawState === 0) {
+            // MODO HOVER (Visualização antes de ancorar)
+            let finalW = params.w, finalD = params.d;
+            if (currentTool === 'viga' || currentTool === 'parede') finalD = params.w;
+            
+            ghostMesh.geometry.dispose();
+            ghostMesh.geometry = new THREE.BoxGeometry(finalW, params.h, finalD);
+            ghostMesh.position.set(snapX, posY, snapZ);
+            ghostMesh.rotation.y = currentRotationY;
+            updateEstimatedCost(finalW * params.h * finalD);
+
+        } else if (drawState === 1) {
+            // MODO DESENHO (Esticando Viga, Parede ou Laje)
+            let ptB = new THREE.Vector3(snapX, posY, snapZ);
+            let dx = ptB.x - pointA.x;
+            let dz = ptB.z - pointA.z;
+            
+            if (currentTool === 'laje') {
+                // Desenho de área retangular
+                let widthX = Math.abs(dx) || GRID_SNAP;
+                let depthZ = Math.abs(dz) || GRID_SNAP;
+                let centerX = pointA.x + (dx / 2);
+                let centerZ = pointA.z + (dz / 2);
+
+                ghostMesh.geometry.dispose();
+                ghostMesh.geometry = new THREE.BoxGeometry(widthX, params.h, depthZ);
+                ghostMesh.position.set(centerX, pointA.y, centerZ);
+                ghostMesh.rotation.y = 0; // Lajes desenhadas arrastando não rotacionam
+                updateEstimatedCost(widthX * params.h * depthZ);
+
+            } else {
+                // Desenho linear (Viga/Parede)
+                let length = Math.sqrt(dx * dx + dz * dz);
+                if (length < GRID_SNAP) length = GRID_SNAP;
+                
+                let centerX = (pointA.x + ptB.x) / 2;
+                let centerZ = (pointA.z + ptB.z) / 2;
+                let angleY = -Math.atan2(dz, dx);
+
+                ghostMesh.geometry.dispose();
+                ghostMesh.geometry = new THREE.BoxGeometry(length, params.h, params.w);
+                ghostMesh.position.set(centerX, pointA.y, centerZ);
+                ghostMesh.rotation.y = angleY;
+                updateEstimatedCost(length * params.h * params.w);
+            }
+        }
+    }
+});
+
+// Ações de clique (Construir / Ancorar / Rotacionar Mobile)
+window.addEventListener('pointerup', (e) => {
+    if (e.button !== 0 || gameState !== 'playing' || e.target.tagName !== 'CANVAS' || isDraggingCamera) return;
+
+    // Lógica de "Double Tap" para rotacionar em telas Touch (Mobile)
+    const now = new Date().getTime();
+    if (now - doubleTapTimer < 300) {
+        rotateGhost();
+        return;
+    }
+    doubleTapTimer = now;
+
+    if (drawState === 0) {
+        if (currentTool === 'pilar') {
+            buildFinalPiece();
+        } else {
+            // Inicia o "arrasto" de Viga/Parede/Laje
+            pointA.copy(ghostMesh.position);
+            drawState = 1;
+            const helpTip = document.getElementById('help-tip');
+            helpTip.innerText = "Modo Edição: Clique no ponto final (ESC para cancelar)";
+            helpTip.style.opacity = '1';
+            helpTip.style.transform = 'translateX(-50%) translateY(10px)';
+        }
+    } else if (drawState === 1) {
+        buildFinalPiece();
+        drawState = 0;
+        document.getElementById('help-tip').style.opacity = '0';
+    }
+});
+
+// Atalhos de Teclado
+window.addEventListener('keydown', (e) => {
+    if (gameState !== 'playing') return;
+    if (e.key.toLowerCase() === 'r') rotateGhost();
+    if (e.key === 'Escape') cancelDrawing();
+});
+
+function rotateGhost() {
+    if (drawState === 0) {
+        currentRotationY += Math.PI / 2;
+        ghostMesh.rotation.y = currentRotationY;
+    }
+}
+
+function cancelDrawing() {
+    if (drawState === 1) {
+        drawState = 0;
+        document.getElementById('help-tip').style.opacity = '0';
+        // Força recálculo do ghostMesh
+        const params = getParams();
+        ghostMesh.geometry.dispose();
+        ghostMesh.geometry = new THREE.BoxGeometry(params.w, params.h, currentTool === 'pilar' ? params.d : params.w);
+    }
+}
+/**
+ * ==========================================
+ * 5. MOTOR DE FÍSICA E RESISTÊNCIA DE MATERIAIS
+ * ==========================================
+ */
+function buildFinalPiece() {
+    const geoParams = ghostMesh.geometry.parameters;
+    const vol = geoParams.width * geoParams.height * geoParams.depth;
+    const totalCost = updateEstimatedCost(vol);
+
+    if (config.budget < totalCost) return; // Cancela se não houver verba
+
+    const matDef = MATERIALS[currentTool];
+    const finalGeo = new THREE.BoxGeometry(geoParams.width, geoParams.height, geoParams.depth);
+    const finalMat = new THREE.MeshStandardMaterial({ 
+        color: matDef.color, roughness: 0.7, metalness: 0.1 
+    });
+    
+    const finalMesh = new THREE.Mesh(finalGeo, finalMat);
+    finalMesh.position.copy(ghostMesh.position);
+    finalMesh.rotation.copy(ghostMesh.rotation);
+    finalMesh.castShadow = true;
+    finalMesh.receiveShadow = true;
+    scene.add(finalMesh);
+
+    const newBlock = {
+        type: currentTool,
+        w: geoParams.width, 
+        h: geoParams.height, 
+        d: geoParams.depth,
+        vol: vol, 
+        mesh: finalMesh, 
+        tension: 0, // Força acumulada (N)
+        baseColor: new THREE.Color(matDef.color)
+    };
+
+    blocks.push(newBlock);
+    config.budget -= totalCost;
+    updateHUD();
+}
+
+function calculatePhysics() {
+    // Zera as tensões para recalcular do topo para a base
+    blocks.forEach(b => b.tension = 0);
+
+    // Ordena de cima para baixo pelo eixo Y
+    let sorted = [...blocks].sort((a, b) => b.mesh.position.y - a.mesh.position.y);
+
+    sorted.forEach(topBlock => {
+        // Peso Próprio = Volume (m³) * Densidade (kg/m³) * Gravidade (9.81 m/s²)
+        let weight = topBlock.vol * MATERIALS[topBlock.type].density * 9.81;
+        topBlock.tension += weight;
+
+        blocks.forEach(botBlock => {
+            if (topBlock === botBlock) return;
+
+            const tY = topBlock.mesh.position.y;
+            const bY = botBlock.mesh.position.y;
+
+            // Checa contato vertical (com pequena tolerância de 0.05m)
+            if (Math.abs((tY - topBlock.h / 2) - (bY + botBlock.h / 2)) < 0.05) {
+                const tBox = new THREE.Box3().setFromObject(topBlock.mesh);
+                const bBox = new THREE.Box3().setFromObject(botBlock.mesh);
+
+                // Se houver interseção no plano XZ, transfere a carga
+                if (tBox.intersectsBox(bBox)) {
+                    botBlock.tension += topBlock.tension;
+                }
+            }
+        });
+    });
+
+    const dangerColor = new THREE.Color(0xef4444);
+
+    for (let b of blocks) {
+        const box = new THREE.Box3().setFromObject(b.mesh);
+        let areaX = box.max.x - box.min.x;
+        let areaZ = box.max.z - box.min.z;
+        let baseArea = areaX * areaZ;
+
+        // Tensão de Compressão Sigma = Força (N) / Área (m²)
+        let pressure = b.tension / baseArea;
+        
+        // Fator de Utilização da capacidade do material
+        let stressRatio = pressure / MATERIALS[b.type].limit;
+
+        // Feedback visual dinâmico de estresse estrutural
+        if (stressRatio > 0.6) {
+            // Mistura a cor original com vermelho proporcionalmente ao perigo
+            let mixRatio = (stressRatio - 0.6) / 0.4;
+            b.mesh.material.color.lerpColors(b.baseColor, dangerColor, Math.min(mixRatio, 1));
+        } else {
+            b.mesh.material.color.copy(b.baseColor);
+        }
+
+        if (stressRatio > 1.0) {
+            endGame(`COLAPSO ESTRUTURAL!\nA tensão de ${Math.round(pressure/1000)} kPa excedeu o limite do ${b.type.toUpperCase()} de concreto armado.`);
+            return;
+        }
+    }
+}
+
+function checkWinCondition() {
+    if (blocks.length === 0) return;
+
+    // Altura Máxima
+    let maxH = blocks.reduce((max, b) => Math.max(max, b.mesh.position.y + b.h / 2), 0);
+    
+    // Área de Base (Lajes e fundações que tocam o chão)
+    let baseArea = blocks
+        .filter(b => (b.mesh.position.y - b.h / 2) <= 0.05)
+        .reduce((sum, b) => {
+            const box = new THREE.Box3().setFromObject(b.mesh);
+            return sum + ((box.max.x - box.min.x) * (box.max.z - box.min.z));
+        }, 0);
+
+    document.getElementById('txt-alt').innerText = maxH.toFixed(1);
+    document.getElementById('txt-area').innerText = baseArea.toFixed(1);
+
+    if (maxH >= config.targetAlt && baseArea >= config.targetArea) {
+        endGame('Objetivos de Altura e Área alcançados com sucesso estrutural!', true);
+    }
+}
+
+/**
+ * ==========================================
+ * 6. LÓGICA DE JOGO, UI E LOOP PRINCIPAL
+ * ==========================================
+ */
+function startGame(difficulty) {
+    document.getElementById('screen-start').style.opacity = '0';
+    setTimeout(() => {
+        document.getElementById('screen-start').style.display = 'none';
+    }, 400);
+
+    gameState = 'playing';
+
+    // Curva de dificuldade escalada
+    if(difficulty === 'easy') config = { budget: 200000, targetAlt: 10, targetArea: 10, mult: 1 };
+    if(difficulty === 'medium') config = { budget: 150000, targetAlt: 20, targetArea: 15, mult: 2 };
+    if(difficulty === 'hard') config = { budget: 100000, targetAlt: 40, targetArea: 25, mult: 3 };
+
+    document.getElementById('target-alt').innerText = config.targetAlt;
+    document.getElementById('target-area').innerText = config.targetArea;
+
+    updateHUD();
+    startTimer();
+    animate();
+}
+
+function updateHUD() {
+    document.getElementById('txt-budget').innerText = config.budget.toLocaleString('pt-BR');
+}
+
+function startTimer() {
+    const timerEl = document.getElementById('timer-panel');
+    const interval = setInterval(() => {
+        if (gameState !== 'playing') { clearInterval(interval); return; }
+        
+        timeLeft--;
+        let min = Math.floor(timeLeft / 60);
+        let sec = timeLeft % 60;
+        
+        timerEl.innerText = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+        
+        if (timeLeft <= 60) timerEl.classList.add('critical-time');
+        if (timeLeft <= 0) endGame('CRONOGRAMA ESTOURADO!\nO prazo da obra acabou.');
+    }, 1000);
+}
+
+function endGame(msg, win = false) {
+    gameState = 'end';
+    const screen = document.getElementById('screen-gameover');
+    screen.style.display = 'flex';
+    
+    // Pequeno delay para a transição de opacidade do CSS
+    setTimeout(() => { screen.style.opacity = '1'; }, 50);
+
+    const title = document.getElementById('end-title');
+    title.innerText = win ? "PROJETO APROVADO!" : "FALHA NA OBRA";
+    title.style.background = win ? "linear-gradient(to right, #10b981, #34d399)" : "linear-gradient(to right, #ef4444, #f87171)";
+    title.style.webkitBackgroundClip = "text";
+    
+    document.getElementById('end-msg').innerText = msg;
+
+    if (win) {
+        // Pontuação bonifica sobra de caixa e rapidez
+        let score = Math.floor((config.budget + (timeLeft * 25)) * config.mult);
+        document.getElementById('final-score').innerText = score.toLocaleString('pt-BR');
+        document.getElementById('win-section').style.display = 'block';
+        showRanking();
+    }
+}
+
+function saveScore() {
+    const name = document.getElementById('player-name').value.toUpperCase() || 'ENG';
+    const scoreText = document.getElementById('final-score').innerText.replace(/\./g, '');
+    const score = parseInt(scoreText);
+
+    let ranking = JSON.parse(localStorage.getItem('civil_master_v2_rank') || '[]');
+    ranking.push({ name, score });
+    ranking.sort((a, b) => b.score - a.score);
+    ranking = ranking.slice(0, 5); // Mantém Top 5
+
+    localStorage.setItem('civil_master_v2_rank', JSON.stringify(ranking));
+    document.getElementById('win-section').style.display = 'none';
+    showRanking();
+}
+
+function showRanking() {
+    let ranking = JSON.parse(localStorage.getItem('civil_master_v2_rank') || '[]');
+    if(ranking.length === 0) return;
+
+    let html = '<table class="ranking-table"><tr><th>POS</th><th>ENG</th><th>PTS</th></tr>';
+    ranking.forEach((r, i) => {
+        html += `<tr><td>${i+1}°</td><td>${r.name}</td><td>${r.score.toLocaleString('pt-BR')}</td></tr>`;
+    });
+    html += '</table>';
+    document.getElementById('ranking-container').innerHTML = html;
+}
+
+function animate() {
+    if (gameState !== 'playing') return;
+    requestAnimationFrame(animate);
+
+    controls.update();
+
+    if (blocks.length > 0) {
+        calculatePhysics();
+        if(gameState === 'playing') checkWinCondition();
+    }
+
+    renderer.render(scene, camera);
+}
+
+// Render inicial para a cena de fundo do menu
+renderer.render(scene, camera);
+
+// Listeners dinâmicos para atualização em tempo real do GhostMesh (Preview Paramétrico)
+['param-w', 'param-d', 'param-h'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+        if (gameState === 'playing' && drawState === 0) {
+            const params = getParams();
+            let finalD = currentTool === 'pilar' || currentTool === 'laje' ? params.d : params.w;
+            
+            ghostMesh.geometry.dispose();
+            ghostMesh.geometry = new THREE.BoxGeometry(params.w, params.h, finalD);
+            updateEstimatedCost(params.w * params.h * finalD);
+        }
+    });
+});
+</script>
+</body>
+</html>
