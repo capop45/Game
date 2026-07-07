@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explorador 2D - Estilo Tibia</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            font-size: 24px;
+            color: #fbc02d;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        #gameCanvas {
+            border: 4px solid #333;
+            border-radius: 4px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+            background-color: #000;
+        }
+
+        .panel {
+            margin-top: 15px;
+            background-color: #2a2a2a;
+            padding: 15px 30px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            text-align: center;
+        }
+
+        .legend {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .color-box {
+            width: 15px;
+            height: 15px;
+            border: 1px solid #000;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Mini Mundo Explorável</h1>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    
+    <div class="panel">
+        <p><strong>Controles:</strong> Use as <strong>Setas do Teclado</strong> ou <strong>W, A, S, D</strong> para mover o personagem.</p>
+        <div class="legend">
+            <div class="legend-item"><div class="color-box" style="background-color: #2e7d32;"></div> Grama</div>
+            <div class="legend-item"><div class="color-box" style="background-color: #1565c0;"></div> Água (Bloqueia)</div>
+            <div class="legend-item"><div class="color-box" style="background-color: #1b5e20;"></div> Árvore (Bloqueia)</div>
+            <div class="legend-item"><div class="color-box" style="background-color: #616161;"></div> Montanha (Bloqueia)</div>
+            <div class="legend-item"><div class="color-box" style="background-color: #fbc02d;"></div> Areia</div>
+            <div class="legend-item"><div class="color-box" style="background-color: #8d6e63;"></div> Caminho</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Configurações Globais
+        const TILE_SIZE = 40; 
+        const MAP_COLS = 100; // Mapa relativamente grande (10.000 tiles)
+        const MAP_ROWS = 100;
+        const VIEW_COLS = canvas.width / TILE_SIZE; // 20
+        const VIEW_ROWS = canvas.height / TILE_SIZE; // 15
+
+        // Dicionário de Terrenos
+        const TILES = {
+            GRASS: { id: 0, color: '#2e7d32', walkable: true },
+            WATER: { id: 1, color: '#1565c0', walkable: false },
+            TREE: { id: 2, color: '#1b5e20', walkable: false },
+            MOUNTAIN: { id: 3, color: '#616161', walkable: false },
+            SAND: { id: 4, color: '#fbc02d', walkable: true },
+            PATH: { id: 5, color: '#8d6e63', walkable: true }
+        };
+
+        // Estado do Jogo
+        let map = [];
+        const player = {
+            x: Math.floor(MAP_COLS / 2),
+            y: Math.floor(MAP_ROWS / 2),
+            color: '#d32f2f', // Vermelho escuro
+            size: TILE_SIZE * 0.7
+        };
+        const camera = { x: 0, y: 0 };
+
+        // Função para gerar o mapa de forma procedural simples
+        function generateMap() {
+            for (let y = 0; y < MAP_ROWS; y++) {
+                let row = [];
+                for (let x = 0; x < MAP_COLS; x++) {
+                    // Contorno do mapa cercado por água
+                    if (x === 0 || y === 0 || x === MAP_COLS - 1 || y === MAP_ROWS - 1) {
+                        row.push(TILES.WATER.id);
+                    } else {
+                        // Lógica aleatória para distribuir elementos pelo cenário
+                        let rand = Math.random();
+                        if (rand < 0.03) row.push(TILES.WATER.id); // Pequenas poças
+                        else if (rand < 0.12) row.push(TILES.MOUNTAIN.id); // Pedras/Montanhas
+                        else if (rand < 0.35) row.push(TILES.TREE.id); // Florestas densas
+                        else if (rand < 0.45) row.push(TILES.SAND.id); // Manchas de areia
+                        else if (rand < 0.55) row.push(TILES.PATH.id); // Caminhos de terra
+                        else row.push(TILES.GRASS.id); // Terreno padrão
+                    }
+                }
+                map.push(row);
+            }
+            
+            // Limpa uma área segura de grama ao redor do local de nascimento do jogador
+            for(let i = -1; i <= 1; i++) {
+                for(let j = -1; j <= 1; j++) {
+                    map[player.y + i][player.x + j] = TILES.GRASS.id;
+                }
+            }
+        }
+
+        // Sistema de Câmera
+        function updateCamera() {
+            // Centraliza a câmera no jogador
+            camera.x = player.x - Math.floor(VIEW_COLS / 2);
+            camera.y = player.y - Math.floor(VIEW_ROWS / 2);
+
+            // Impede que a câmera saia dos limites do mapa
+            if (camera.x < 0) camera.x = 0;
+            if (camera.y < 0) camera.y = 0;
+            if (camera.x > MAP_COLS - VIEW_COLS) camera.x = MAP_COLS - VIEW_COLS;
+            if (camera.y > MAP_ROWS - VIEW_ROWS) camera.y = MAP_ROWS - VIEW_ROWS;
+        }
+
+        // Renderização Principal
+        function draw() {
+            updateCamera();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 1. Desenha os blocos visíveis (Tiles)
+            for (let y = 0; y < VIEW_ROWS; y++) {
+                for (let x = 0; x < VIEW_COLS; x++) {
+                    let mapX = camera.x + x;
+                    let mapY = camera.y + y;
+
+                    // Verifica se está desenhando dentro dos limites lógicos do mapa
+                    if (mapX >= 0 && mapX < MAP_COLS && mapY >= 0 && mapY < MAP_ROWS) {
+                        let tileId = map[mapY][mapX];
+                        let tileData = Object.values(TILES).find(t => t.id === tileId);
+                        
+                        // Desenha o fundo do bloco
+                        ctx.fillStyle = tileData ? tileData.color : '#000';
+                        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+
+                        // Adiciona grid clássico para simular o visual de tabuleiro/Tibia
+                        ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+                        ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                    }
+                }
+            }
+
+            // 2. Desenha o Jogador
+            let screenX = (player.x - camera.x) * TILE_SIZE;
+            let screenY = (player.y - camera.y) * TILE_SIZE;
+            let offset = (TILE_SIZE - player.size) / 2; // Centraliza o jogador dentro do Tile
+            
+            // Corpo do personagem
+            ctx.fillStyle = player.color;
+            ctx.fillRect(screenX + offset, screenY + offset, player.size, player.size);
+            
+            // Detalhe visual (cabeça/frente do personagem)
+            ctx.fillStyle = '#ffcdd2';
+            ctx.fillRect(screenX + offset + 4, screenY + offset + 4, player.size - 8, player.size - 8);
+        }
+
+        // Sistema de Controles e Colisão
+        window.addEventListener('keydown', (e) => {
+            let newX = player.x;
+            let newY = player.y;
+            let moved = false;
+
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') { newY--; moved = true; }
+            if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { newY++; moved = true; }
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { newX--; moved = true; }
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { newX++; moved = true; }
+
+            if (moved) {
+                // Impede rolagem da página ao usar as setas
+                if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
+                    e.preventDefault();
+                }
+
+                // Verifica colisão com os limites do mapa
+                if (newX >= 0 && newX < MAP_COLS && newY >= 0 && newY < MAP_ROWS) {
+                    let tileId = map[newY][newX];
+                    let tileData = Object.values(TILES).find(t => t.id === tileId);
+                    
+                    // Só permite andar se o bloco for configurado como caminhável
+                    if (tileData && tileData.walkable) {
+                        player.x = newX;
+                        player.y = newY;
+                    }
+                }
+                
+                // Re-renderiza a tela a cada passo
+                draw();
+            }
+        });
+
+        // Inicialização
+        generateMap();
+        draw();
+    </script>
+</body>
+</html>
